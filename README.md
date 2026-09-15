@@ -1,8 +1,28 @@
 # repo-docs-structure
 
-A fixed way to keep a repo's documents in order, so AI agents write and read them the same way every time.
+One manifest, fixed folders, and three checks. Install it once and every AI agent that touches the repo documents it the same way.
 
-It was built and proven in one production repo. This repo captures it so it can be installed elsewhere.
+## The problem
+
+When AI agents work on a repo for months, the documents rot.
+
+- Plans, notes, and decisions get dropped in random folders. Nobody can find them later.
+- Each agent session starts blind. It re-reads half the repo to work out what is done and what is next.
+- The same question gets decided three times because the first two decisions were never written down, or were written down somewhere nobody looks.
+- A "todo" list lives in someone's head, a chat log, or a stale markdown file that no longer matches the code.
+
+The result: you cannot answer "what is the state of this project?" without an hour of digging, and neither can the agent.
+
+## The fix
+
+Give the agent one place to look and a small set of rules it cannot break.
+
+- **One file is the truth.** `specs/manifest.json` holds the current state, the work queue, and a pointer to every document. The agent reads it first, every session, and knows where things stand in seconds.
+- **Documents have fixed homes.** Plans go in `specs/plans/`, decisions in `docs/adr/`, and so on. A check fails the build if a markdown file lands anywhere else.
+- **Decisions are written once and never lost.** Each one is a numbered file with the same seven headings. Once accepted, it is never edited. If the decision changes, a new file says so.
+- **Scripts enforce the rules, not prose.** A check fails if the manifest is malformed, points at a missing file, or the board is stale. Rules that live only in an instructions file get ignored. Rules that break CI do not.
+
+It was built and used in one production repo for five months. This repo captures it so it can be installed in any other repo, new or existing.
 
 ## What you get
 
