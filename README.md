@@ -27,7 +27,7 @@ Give the agent one place to look, a way to see one feature at a time, and rules 
 
 ## Status
 
-This describes the design a production repo is moving to as of 2026-09-16. The earlier version (no tags, no ceilings, one 108 KB manifest) ran for five months. The redesign is planned and reviewed but not yet landed. When it lands, the scripts and templates will be copied here.
+This design is live in a production repo as of 2026-09-16. The earlier version (no tags, no ceilings, one 108 KB manifest) ran for five months. The redesign landed in one day. An independent reviewer then checked it in several rounds. Every finding is either fixed with a test or recorded as a deferred card. The scripts and templates are not yet copied here. Until they are, this file is the specification.
 
 ## What you get
 
@@ -176,6 +176,8 @@ One entry in `metadata.threads[]` defines one tag.
 
 Four fields. No description. Tags are flat: no parent, no aliases. A card lists every tag that applies, most general first.
 
+Two rules the checker enforces on this entry: `file` must be exactly `specs/threads/<id>.md`, so generated links never break, and `created` may not be later than the manifest's `last_updated`.
+
 A tag not in this list fails the build, and the error lists every valid id. To add a tag, add it here in a pull request (a proposed change others review before it merges) that touches nothing else.
 
 ### A registry entry
@@ -186,7 +188,9 @@ Plans, specs, and reviews each have one.
 { "id": "phone-auth", "title": "Phone Auth", "file": "specs/design/2026-06-04-phone-auth.md", "created": "2026-06-04", "status": "approved", "tags": ["login", "otp", "phone-otp"] }
 ```
 
-Required: `id`, `title`, `file`, `created`, `status`, `tags`.
+Required: `id`, `title`, `created`, `status`, `tags`, and exactly one of `file` or `archived`.
+
+`file` points at the record in this repo. `archived` is a URL into a separate archive repo for records that left the live tree (see Archive below). Never both.
 
 Optional, with rules:
 
@@ -200,7 +204,7 @@ Optional, with rules:
 
 No other keys.
 
-Every file under `specs/plans/`, `specs/design/`, and `specs/reviews/` must have an entry, and every entry must point at a file that exists. Both directions are checked.
+Every file under `specs/plans/`, `specs/design/`, and `specs/reviews/` must have an entry, and every entry with `file` must point at a file that exists. Both directions are checked, and the walk is recursive. A file in a nested folder fails with a message telling you to move it to the folder root. The schema allows flat paths only.
 
 ## Thread files
 
@@ -236,6 +240,8 @@ the App Store account and Meta verification.
 
 Everything above the marker is written by hand and rewritten when the feature moves. The current-state paragraph is required. The log is optional. Everything below the marker is generated from tags.
 
+The generator finds the real markers only when they stand alone on a line outside any code fence. You can quote a marker in backticks or show one inside a fenced example in your prose and nothing above the real block is touched.
+
 The hand-written part is the point. It is the complete answer to "where are we on login," not a list of links.
 
 ## Decisions (ADRs)
@@ -255,7 +261,7 @@ Every decision file has these eight headings, in this order:
 ## References
 ```
 
-Status is `Proposed`, `Accepted`, or `Superseded by NNNN`. Tags is a comma-separated list of thread ids.
+Status is `Proposed`, `Accepted`, or `Superseded by NNNN`. Tags is a comma-separated list of thread ids; it may wrap across lines. A number is never reused: two files starting with the same four digits fail the build.
 
 Once a decision is `Accepted`, do not edit it, except to change its status or its tags. If the decision changes, write a new one and mark the old one as superseded.
 
@@ -265,18 +271,26 @@ The index table in `docs/adr/README.md` is generated from the files.
 
 `docs/ops/decision-log.md` holds smaller owner rulings that do not deserve an ADR: which option was picked, on what date, and why in one line. Each entry has a stable id like `D-042`. A card's scope can cite the id, and the check fails if the id does not exist. The log is append-only by rule.
 
+## Archive
+
+Records that nothing open cites can leave the live repo for a separate private archive repo, so the files agents load stay small. The registry entry keeps its id and tags but swaps `file` for `archived`, a URL into the archive. Thread files then link there instead.
+
+Rules: archive only when no open card or plan cites the record; move the file and rewrite the entry in one pull request; the archive is read-only, so corrections go in the live repo and link back. Git history in the live repo still holds every archived file, so nothing is ever lost.
+
 ## The checks
 
 Run locally or in CI. Each exits non-zero on failure.
 
 | Command | What it checks |
 |---|---|
-| `node scripts/check-manifest.mjs` | Schema. Every tag resolves. Every pointer resolves. `active_plan` exists. Every file registered and present. ADR headings and tags. Ceilings. Decision ids. Board and threads fresh. |
+| `node scripts/check-manifest.mjs` | Schema. Every tag resolves. Every pointer resolves. `active_plan` exists. Every file registered and present, recursively. Thread files named after their id. No date after `last_updated`. ADR headings, tags, and unique numbers. Ceilings. Decision ids. Board and threads fresh. |
 | `node scripts/kanban.mjs` | Rewrites `specs/KANBAN.md`. `--check` only tests if it is stale. |
 | `node scripts/threads.mjs` | Rewrites every thread file and the ADR index. `--check` only tests. |
 | `node scripts/check-docs-location.mjs` | Fails if a new `.md` file was added outside the allowed folders. |
 
 Warnings, not failures: a thread with no cards or documents; a card deferred more than 90 days ago; an active card older than 60 days; a title outside 3 to 8 words.
+
+The checker has its own test suite (`pnpm run test:manifest`), also run in CI. Each case starts from an empty work queue and builds exactly the cards it needs, so the tests pass whatever the real queue holds: empty, full, or every card deferred.
 
 ## What the agent is told
 
@@ -288,7 +302,7 @@ The block in `AGENTS.md`:
 - node scripts/check-manifest.mjs validates it.
 - Run the kanban and threads scripts after any manifest change.
 - Keep ids stable and never change created.
-- Every card lists every tag that applies and one acceptance line.
+- Every card lists every tag that applies. Every active card carries one acceptance line.
 - Reuse an existing tag before adding one. Thread list changes travel alone.
 - Defer with a dated reason instead of deleting.
 - Owner rulings go in docs/ops/decision-log.md.
@@ -320,4 +334,4 @@ Anywhere else, the location check fails.
 
 ## Next step
 
-When the source repo lands the redesign, copy the five scripts, the schema, and the templates here unchanged.
+Copy the five scripts, their tests, the schema, and the templates from the source repo into this one, unchanged, then add an install script that lays them into a new or existing repo.
