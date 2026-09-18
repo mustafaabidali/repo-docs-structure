@@ -22,7 +22,7 @@ Give the agent one place to look, a way to see one feature at a time, and rules 
 - **Every card and document carries tags.** A tag names a feature or a milestone: `login`, `search`, `pre-announcement`. One generated file per tag collects everything about it under a hand-written paragraph that says where things stand.
 - **Documents have fixed homes.** Plans in `specs/plans/`, designs in `specs/design/`, decisions in `docs/adr/`. A check fails the build if a markdown file lands anywhere else, or if a file in those folders is not registered.
 - **Decisions are written once and never lost.** Architecture decisions are numbered files with fixed headings. Once accepted, never edited. Smaller rulings go in one append-only decision log with stable ids.
-- **The queue has a ceiling.** At most 30 active cards, 10 at top priority, at most 1 in progress. Above that the build fails. Cards that are real but not now are deferred with a dated reason, not deleted.
+- **The queue has a ceiling.** At most 30 active cards, 10 at top priority, 3 in progress. Above that the build fails. Cards that are real but not now are deferred with a dated reason, not deleted.
 - **Scripts enforce the rules, not prose.** Rules that live only in an instructions file get ignored. Rules that break CI (the checks that run on every pull request) do not.
 
 ## Status
@@ -163,7 +163,7 @@ Counted on active cards only. The build fails above them.
 |---|---|
 | Total active | 30 |
 | Priority 1 | 10 |
-| In progress | at most 1. If one exists, its `plan` must equal `active_plan`. |
+| In progress | 3. A card on a plan other than `active_plan` warns; an `active_plan` with no active card warns. Neither fails the build. |
 | Owner cards | 10 |
 
 ### A thread
@@ -288,7 +288,7 @@ Run locally or in CI. Each exits non-zero on failure.
 | `node scripts/threads.mjs` | Rewrites every thread file and the ADR index. `--check` only tests. |
 | `node scripts/check-docs-location.mjs` | Fails if a new `.md` file was added outside the allowed folders. |
 
-Warnings, not failures: a thread with no cards or documents; a card deferred more than 90 days ago; an active card older than 60 days; a title outside 3 to 8 words.
+Warnings, not failures: a thread with no cards or documents; a card deferred more than 90 days ago; an active card older than 60 days; a title outside 3 to 8 words; an in-progress card on a plan other than `active_plan`; an `active_plan` with no active card.
 
 The checker has its own test suite (`pnpm run test:manifest`), also run in CI. Each case starts from an empty work queue and builds exactly the cards it needs, so the tests pass whatever the real queue holds: empty, full, or every card deferred.
 
