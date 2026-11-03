@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { after, test } from "node:test";
@@ -99,6 +99,64 @@ function runSuite(repo) {
 function failures(out) {
   return out.split("\n").filter((line) => /^not ok /.test(line)).join("\n");
 }
+
+/**
+ * Give the committed copy a local origin holding `branch`, so a local run of a
+ * changed-file check is judged from origin/<branch>.
+ * @param {string} repo @param {string} branch
+ */
+function pushToOrigin(repo, branch) {
+  const origin = `${repo}-origin.git`;
+  git(dirname(repo), ["init", "-q", "--bare", "-b", branch, origin]);
+  git(repo, ["remote", "add", "origin", origin]);
+  git(repo, ["push", "-q", "origin", branch]);
+  git(repo, ["fetch", "-q", "origin"]);
+}
+
+/**
+ * One command-line probe: on a fresh branch from `base`, commit `files` and
+ * run `script` as a local run. Returns its exit code and output, and goes back
+ * to `base`.
+ * @param {string} repo @param {string} base @param {string} name @param {Record<string, string>} files @param {string} script
+ */
+function probe(repo, base, name, files, script) {
+  git(repo, ["switch", "-q", "-c", name, base]);
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(repo, path)), { recursive: true });
+    writeFileSync(join(repo, path), text);
+  }
+  git(repo, ["add", "-A"]);
+  git(repo, ["commit", "-q", "-m", name]);
+  const r = spawnSync(process.execPath, [join("scripts", script)], { cwd: repo, encoding: "utf8", env: localEnv() });
+  git(repo, ["switch", "-q", base]);
+  return { code: r.status, out: `${r.stdout}${r.stderr}` };
+}
+
+test("every changed list, and the changed default branch, is what the checks' command lines judge by", () => {
+  const repo = copyRepo();
+  writeFileSync(join(repo, "scripts", "lib", "settings.mjs"), CHANGED_SETTINGS);
+  commitCopy(repo, "trunk");
+  pushToOrigin(repo, "trunk");
+  const manifest = readFileSync(join(repo, "specs", "manifest.json"), "utf8");
+  const cases = [
+    // ALLOWED_MARKDOWN: specs/** is allowed only by the changed list; .github/** only by the default.
+    { name: "markdown-pass", script: "check-docs-location.mjs", files: { "specs/notes.md": "x\n" }, code: 0 },
+    { name: "markdown-fail", script: "check-docs-location.mjs", files: { ".github/notes.md": "x\n" }, code: 1, names: ".github/notes.md" },
+    // RULE_FILES: RULES.md is a rule file only in the changed list; AGENTS.md only by default.
+    { name: "rules-fail", script: "check-rule-files-alone.mjs", files: { "RULES.md": "x\n", "scripts/probe.mjs": "x\n" }, code: 1, names: "scripts/probe.mjs" },
+    { name: "rules-pass", script: "check-rule-files-alone.mjs", files: { "AGENTS.md": "x\n", "scripts/probe.mjs": "x\n" }, code: 0 },
+    // ALLOWED_EXTRAS: only specs/manifest.json may travel with a rule file; the decision log no longer may.
+    { name: "extras-pass", script: "check-rule-files-alone.mjs", files: { "RULES.md": "x\n", "specs/manifest.json": `${manifest}\n` }, code: 0 },
+    { name: "extras-fail", script: "check-rule-files-alone.mjs", files: { "RULES.md": "x\n", "docs/ops/decision-log.md": "x\n" }, code: 1, names: "docs/ops/decision-log.md" },
+  ];
+  for (const c of cases) {
+    const r = probe(repo, "trunk", c.name, c.files, c.script);
+    assert.equal(r.code, c.code, `${c.name}: ${r.out}`);
+    if (c.names) assert.match(r.out, new RegExp(`^- ${c.names.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m"), c.name);
+    // A local run is judged from origin/trunk; origin/main does not exist here.
+    assert.doesNotMatch(r.out, /origin\/main/, c.name);
+  }
+});
 
 test("every value in scripts/lib/settings.mjs can change and the whole suite still passes", () => {
   const repo = copyRepo();
