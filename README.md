@@ -334,7 +334,7 @@ Anywhere else, the location check fails.
 
 ## Install
 
-Into a new or existing repo, from its root, with Node.js 22 or newer, `git` and `bash`. The steps copy files and edit the repo's own `package.json`; nothing runs from the copy. A file the repo already has is never overwritten, except the checks themselves in step 2.
+Into a new or existing repo, from its root, with Node.js 22 or newer, `git` and `bash`. The steps copy files and edit the repo's own `package.json`; nothing runs from the copy. Only two things a repo already has are replaced: the checks and their tests (step 2, apart from `scripts/lib/settings.mjs`), and the four scripts the checks need in `package.json` (step 4). Every other file it has, the schema with its archive pattern included, is kept.
 
 1. Take a copy of this repo:
 
@@ -355,13 +355,16 @@ Into a new or existing repo, from its root, with Node.js 22 or newer, `git` and 
    done
    ```
 
-3. Copy the schema and the starting files, among them the AGENTS.md block that step 9 needs:
+3. Copy the schema and the starting files, among them the AGENTS.md block that step 9 needs. The starting manifest, plan and thread come only into a repo with no manifest, so a repo that has one never gains a plan it has not registered:
 
    ```sh
    mkdir -p specs/threads specs/plans specs/design specs/reviews docs/adr docs/ops
-   cp "$template"/specs/manifest.schema.json specs/
-   for f in specs/manifest.json specs/plans/2026-11-03-docs-structure.md specs/threads/docs-structure.md \
-     specs/design/.gitkeep specs/reviews/.gitkeep docs/README.md docs/agents-md-block.md \
+   if [ ! -e specs/manifest.json ]; then
+     for f in specs/manifest.json specs/plans/2026-11-03-docs-structure.md specs/threads/docs-structure.md; do
+       cp "$template/$f" "$f"
+     done
+   fi
+   for f in specs/manifest.schema.json specs/design/.gitkeep specs/reviews/.gitkeep docs/README.md docs/agents-md-block.md \
      docs/adr/README.md docs/adr/TEMPLATE.md docs/ops/decision-log.md; do
      [ -e "$f" ] || cp "$template/$f" "$f"
    done
@@ -405,6 +408,8 @@ Into a new or existing repo, from its root, with Node.js 22 or newer, `git` and 
 9. Paste the block in `docs/agents-md-block.md` into the repo's `AGENTS.md`, in a pull request of its own: the rule-files check fails a pull request that changes `AGENTS.md` with anything else.
 
 10. Follow `specs/plans/2026-11-03-docs-structure.md`: replace the starting thread with the repo's own, add the first cards, and move existing decisions into `docs/adr/`.
+
+To upgrade, run steps 1 to 3 again, then step 8's removal. The checks are replaced and everything else is kept, the settings and the schema included. A newer template may change the schema: compare it with the repo's before removing the copy, with `diff specs/manifest.schema.json "$template"/specs/manifest.schema.json`, and carry over what changed, keeping the repo's own archive pattern.
 
 The tests need at least one thread and one plan in the manifest, which the starting files provide. This repo's own tests, in `template-tests/`, run the shell blocks above whole in made-up repos, with only the clone and the package install replaced by local stand-ins, so these steps are tested as written; run them with `node --test 'template-tests/*.test.mjs'`. The steps never copy `template-tests/`, so an adopting repo never runs them against its own README or workflow.
 
