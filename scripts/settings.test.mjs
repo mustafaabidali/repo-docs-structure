@@ -114,17 +114,35 @@ function pushToOrigin(repo, branch) {
 }
 
 /**
- * The probes' baseline: only this checkout's scripts, with every setting
+ * The checker files the probes run, and everything those import: the
+ * baseline holds these and nothing else, never a copy of the repo's scripts/.
+ */
+const PROBE_BASELINE = [
+  "scripts/changed-files.mjs",
+  "scripts/check-docs-location.mjs",
+  "scripts/check-rule-files-alone.mjs",
+  "scripts/lib/paths.mjs",
+  "scripts/lib/settings.mjs",
+];
+
+/**
+ * The probes' baseline: the fixed checker files above, with every setting
  * changed, committed on trunk and pushed to a local origin. None of the
- * repo's own files are in it, so each probe's file is always an addition.
+ * repo's own files are in it, and no probe uses a baseline file's name, so
+ * each probe's file is always an addition.
  */
 function probeBaseline() {
   const base = mkdtempSync(join(tmpdir(), "settings-probes-"));
   temps.push(base);
   const repo = join(base, "repo");
-  copyCheckout(join(root, "scripts"), join(repo, "scripts"));
-  writeFileSync(insideCopy(repo, join(repo, "scripts", "lib", "settings.mjs")), CHANGED_SETTINGS);
+  mkdirSync(repo);
+  for (const file of PROBE_BASELINE) {
+    mkdirSync(insideCopy(repo, dirname(join(repo, file))), { recursive: true });
+    writeFileSync(insideCopy(repo, join(repo, file)), file === "scripts/lib/settings.mjs" ? CHANGED_SETTINGS : readFileSync(join(root, file), "utf8"));
+  }
   commitCopy(repo, "trunk");
+  const tracked = spawnSync("git", ["ls-files"], { cwd: repo, encoding: "utf8" }).stdout.trim().split("\n").sort();
+  assert.deepEqual(tracked, [...PROBE_BASELINE].sort(), "the baseline holds the fixed checker files and nothing else");
   pushToOrigin(repo, "trunk");
   return repo;
 }
@@ -155,16 +173,17 @@ test("every changed list, and the changed default branch, is what the checks' co
   const manifest = `${JSON.stringify({ name: "probe" }, null, 2)}\n`;
   const cases = [
     // ALLOWED_MARKDOWN: specs/** is allowed only by the changed list; .github/** only by the default.
-    { name: "markdown-pass", script: "check-docs-location.mjs", files: { "specs/notes.md": "x\n" }, code: 0 },
-    { name: "markdown-fail", script: "check-docs-location.mjs", files: { ".github/notes.md": "x\n" }, code: 1, names: ".github/notes.md" },
+    { name: "markdown-pass", script: "check-docs-location.mjs", files: { "specs/probe-added-notes.md": "x\n" }, code: 0 },
+    { name: "markdown-fail", script: "check-docs-location.mjs", files: { ".github/probe-added-notes.md": "x\n" }, code: 1, names: ".github/probe-added-notes.md" },
     // RULE_FILES: RULES.md is a rule file only in the changed list; AGENTS.md only by default.
-    { name: "rules-fail", script: "check-rule-files-alone.mjs", files: { "RULES.md": "x\n", "scripts/probe.mjs": "x\n" }, code: 1, names: "scripts/probe.mjs" },
-    { name: "rules-pass", script: "check-rule-files-alone.mjs", files: { "AGENTS.md": "x\n", "scripts/probe.mjs": "x\n" }, code: 0 },
+    { name: "rules-fail", script: "check-rule-files-alone.mjs", files: { "RULES.md": "x\n", "probe-work/added.mjs": "x\n" }, code: 1, names: "probe-work/added.mjs" },
+    { name: "rules-pass", script: "check-rule-files-alone.mjs", files: { "AGENTS.md": "x\n", "probe-work/added.mjs": "x\n" }, code: 0 },
     // ALLOWED_EXTRAS: only specs/manifest.json may travel with a rule file; the decision log no longer may.
     { name: "extras-pass", script: "check-rule-files-alone.mjs", files: { "RULES.md": "x\n", "specs/manifest.json": manifest }, code: 0 },
     { name: "extras-fail", script: "check-rule-files-alone.mjs", files: { "RULES.md": "x\n", "docs/ops/decision-log.md": "x\n" }, code: 1, names: "docs/ops/decision-log.md" },
   ];
   for (const c of cases) {
+    for (const path of Object.keys(c.files)) assert.ok(!PROBE_BASELINE.includes(path), `${c.name}: ${path} is not a baseline file`);
     const r = probe(repo, "trunk", c.name, c.files, c.script);
     assert.equal(r.code, c.code, `${c.name}: ${r.out}`);
     if (c.names) assert.match(r.out, new RegExp(`^- ${c.names.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m"), c.name);
