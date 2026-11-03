@@ -13,7 +13,9 @@
 //   an archived entry from another owner), its own schema narrowed to that
 //   owner's archive, and its own CI workflow with no concurrency block.
 //
-// A repo whose own README has no such section skips these cases.
+// This file tests the template itself, so it lives in template-tests/, which
+// the Install steps never copy: an adopting repo never runs it against its own
+// README.
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -43,7 +45,7 @@ function installBlocks() {
 }
 
 const blocks = installBlocks();
-const skip = blocks.length > 0 ? false : "no Install section with shell blocks in this repo's README";
+assert.ok(blocks.length > 0, "the README has an Install section with shell blocks");
 
 /** The Install script with its two network commands replaced by local stand-ins; each must be there exactly once. */
 function installScript() {
@@ -190,12 +192,12 @@ function structuredRepo() {
   });
 }
 
-test("install: the README's Install section has shell blocks, the clone first and its removal last", { skip }, () => {
+test("install: the README's Install section has shell blocks, the clone first and its removal last", () => {
   assert.match(blocks[0], /\bgit clone\b/);
   assert.match(blocks.at(-1), /^rm -rf "\$template"\s*$/);
 });
 
-test("install: a fresh app gets the structure, the Node version its workflow reads, the AGENTS.md block and the four scripts, and its installed suite passes", { skip }, () => {
+test("install: a fresh app gets the structure, the Node version its workflow reads, the AGENTS.md block and the four scripts, and its installed suite passes", () => {
   const repo = freshApp();
   install(repo);
   assert.equal(readFileSync(join(repo, ".nvmrc"), "utf8"), readFileSync(join(root, ".nvmrc"), "utf8"));
@@ -211,7 +213,7 @@ test("install: a fresh app gets the structure, the Node version its workflow rea
   assert.ok(existsSync(join(repo, "specs", "plans", "2026-11-03-docs-structure.md")), "a repo with no manifest gets the starting plan");
 });
 
-test("install: a repo that already has the structure, a sign-in thread, another owner's archive and its own CI keeps them, and its installed suite passes", { skip }, () => {
+test("install: a repo that already has the structure, a sign-in thread, another owner's archive and its own CI keeps them, and its installed suite passes", () => {
   const repo = structuredRepo();
   const ownSchema = readFileSync(join(repo, "specs", "manifest.schema.json"), "utf8");
   const ownWorkflow = readFileSync(join(repo, ".github", "workflows", "ci.yml"), "utf8");
@@ -222,7 +224,7 @@ test("install: a repo that already has the structure, a sign-in thread, another 
   assert.equal(JSON.parse(readFileSync(join(repo, "specs", "manifest.json"), "utf8")).metadata.threads[0].id, "sign-in");
 });
 
-test("install: an upgrade, steps 1 to 3 again, replaces the checks but keeps the repo's settings and its narrowed archive pattern", { skip }, () => {
+test("install: an upgrade, steps 1 to 3 again, replaces the checks but keeps the repo's settings and its narrowed archive pattern", () => {
   const repo = structuredRepo();
   install(repo);
   const settings = join(repo, "scripts", "lib", "settings.mjs");

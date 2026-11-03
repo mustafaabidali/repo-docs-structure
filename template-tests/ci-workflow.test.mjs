@@ -5,8 +5,8 @@
 //
 // The group is read from .github/workflows/ci.yml and evaluated here with the
 // few expression forms it may use (context paths joined by ||); any other form
-// fails the test rather than being guessed at. A repo that wires the checks
-// into a workflow of its own, without this file, skips these cases.
+// fails the test rather than being guessed at. It tests the template's own
+// workflow, so it lives in template-tests/, which the Install steps never copy.
 
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workflowPath = join(root, ".github", "workflows", "ci.yml");
-const skip = existsSync(workflowPath) ? false : "no .github/workflows/ci.yml in this repo";
+assert.ok(existsSync(workflowPath), "the template has its workflow");
 
 /** The concurrency block's group and cancel-in-progress lines. @param {string} text */
 function concurrency(text) {
@@ -58,13 +58,13 @@ test("evaluate: reads context paths, falls through || and refuses other forms", 
   assert.throws(() => evaluate("${{ format('{0}', github.b) }}", context), /unsupported expression/);
 });
 
-test("ci: a push to main and two fork pull requests from their own main get three different groups", { skip }, () => {
+test("ci: a push to main and two fork pull requests from their own main get three different groups", () => {
   const { group } = concurrency(readFileSync(workflowPath, "utf8"));
   const groups = [push("main"), forkPullRequest(5, "main"), forkPullRequest(6, "main")].map((context) => evaluate(group, context));
   assert.equal(new Set(groups).size, 3, `groups: ${groups.join(" | ")}`);
 });
 
-test("ci: two pushes to the same branch share a group, and a newer run cancels the older", { skip }, () => {
+test("ci: two pushes to the same branch share a group, and a newer run cancels the older", () => {
   const { group, cancel } = concurrency(readFileSync(workflowPath, "utf8"));
   assert.equal(evaluate(group, push("main")), evaluate(group, push("main")));
   assert.notEqual(evaluate(group, push("main")), evaluate(group, push("feature")));

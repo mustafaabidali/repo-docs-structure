@@ -11,7 +11,7 @@ concurrency:
 jobs:
   checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       GITHUB_EVENT_BEFORE: ${{ github.event.before }}
     steps:
@@ -31,3 +31,6 @@ jobs:
         run: node scripts/check-rule-files-alone.mjs
       - if: ${{ !cancelled() }}
         run: npm run test:manifest
+      - if: ${{ !cancelled() && hashFiles('template-tests/*.test.mjs') != '' }}
+        name: The template's own tests (the Install steps run whole, and this workflow), which only the template repo holds
+        run: node --test 'template-tests/*.test.mjs'

@@ -406,7 +406,7 @@ Into a new or existing repo, from its root, with Node.js 22 or newer, `git` and 
 
 10. Follow `specs/plans/2026-11-03-docs-structure.md`: replace the starting thread with the repo's own, add the first cards, and move existing decisions into `docs/adr/`.
 
-The tests need at least one thread and one plan in the manifest, which the starting files provide. `scripts/install.test.mjs` runs the shell blocks above, except the clone, the npm commands and the removal, in a made-up repo that has a `package.json`, so these steps are tested as written.
+The tests need at least one thread and one plan in the manifest, which the starting files provide. This repo's own tests, in `template-tests/`, run the shell blocks above whole in made-up repos, with only the clone and the package install replaced by local stand-ins, so these steps are tested as written; run them with `node --test 'template-tests/*.test.mjs'`. The steps never copy `template-tests/`, so an adopting repo never runs them against its own README or workflow.
 
 ### What a repo may change
 
