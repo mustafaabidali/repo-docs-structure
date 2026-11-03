@@ -10,9 +10,12 @@
  * force-push or a shallow fetch the checks fail and say why, instead of
  * passing without looking.
  *
- * A pull request is judged against its base branch and an ordinary push from
- * the commit before the push. A local run, and a push that creates a branch,
- * are judged from their merge base with DEFAULT_BRANCH (scripts/lib/settings.mjs).
+ * A pull request is judged against its base branch, and an ordinary push from
+ * the commit before the push to HEAD. A push that creates a branch has no
+ * commit before it: one that creates DEFAULT_BRANCH (scripts/lib/settings.mjs)
+ * itself is judged from the empty tree, so every file it brings counts; one
+ * that creates any other branch, and a local run, are judged from their merge
+ * base with DEFAULT_BRANCH.
  */
 
 import { spawnSync } from "node:child_process";
@@ -54,6 +57,13 @@ export function gitAt(cwd) {
       if (result.error) throw result.error;
       return result.status === 0;
     },
+    /** The id of the empty tree in this repository's hash, the base that makes every file in HEAD an addition. */
+    emptyTree() {
+      const result = spawnSync("git", ["hash-object", "-t", "tree", "--stdin"], { cwd, encoding: "utf8", input: "" });
+      if (result.error) throw result.error;
+      if (result.status !== 0) throw new Error(`git hash-object -t tree failed: ${result.stderr.trim()}`);
+      return result.stdout.trim();
+    },
     /** One fetch attempt; a failure is left for the caller's second look to report. @param {string} refspec */
     fetch(refspec) {
       const result = spawnSync("git", ["fetch", "--no-tags", "--quiet", "origin", refspec], { cwd, encoding: "utf8" });
@@ -94,8 +104,15 @@ export function diffRange(env = process.env, git = gitAt(root)) {
   if (env.GITHUB_EVENT_NAME === "push") {
     const before = env.GITHUB_EVENT_BEFORE;
     if (!before) throw new Error("push event without GITHUB_EVENT_BEFORE; cannot tell what changed");
-    // An all-zero before is a branch being created: judge it from its merge base with the default branch.
-    if (ZERO_SHA.test(before)) return againstBranch(git, DEFAULT_BRANCH);
+    // An all-zero before is a branch being created. The default branch itself
+    // has nothing to compare with (origin/<default> is HEAD by then), so every
+    // file it brings is judged; another branch is judged from its merge base.
+    if (ZERO_SHA.test(before)) {
+      const branch = env.GITHUB_REF_NAME;
+      if (!branch) throw new Error("push event creating a branch without GITHUB_REF_NAME; cannot tell what changed");
+      if (branch === DEFAULT_BRANCH) return `${git.emptyTree()}..HEAD`;
+      return againstBranch(git, DEFAULT_BRANCH);
+    }
     ensure(git, before, before, `push base ${before} is not in this clone even after git fetch (a force-push?)`);
     return `${before}..HEAD`;
   }
