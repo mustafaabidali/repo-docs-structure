@@ -27,7 +27,7 @@ Give the agent one place to look, a way to see one feature at a time, and rules 
 
 ## Status
 
-This design is live in a production repo as of 2026-09-16. The earlier version (no tags, no ceilings, one 108 KB manifest) ran for five months. The redesign landed in one day. An independent reviewer then checked it in several rounds. Every finding is either fixed with a test or recorded as a deferred card. The scripts and templates are not yet copied here. Until they are, this file is the specification.
+This design is live in a production repo as of 2026-09-16. The earlier version (no tags, no ceilings, one 108 KB manifest) ran for five months. The redesign landed in one day. An independent reviewer then checked it in several rounds. Every finding is either fixed with a test or recorded as a deferred card. The scripts, their tests, the schema and the templates are now in this repo, and this repo runs its own checks in CI. This file is still the specification: where the code and this file differ, one of them has a bug.
 
 ## What you get
 
@@ -332,6 +332,59 @@ Anywhere else, the location check fails.
 - **If it cannot be checked, it is one line in AGENTS.md or it is gone.** Most rules became scripts. The few that cannot (never change `created`, append-only log) stay as prose.
 - **Nothing is deleted, only deferred.** A card with a dated reason is a log entry. An undated pile is a backlog.
 
-## Next step
+## Install
 
-Copy the five scripts, their tests, the schema, and the templates from the source repo into this one, unchanged, then add an install script that lays them into a new or existing repo.
+Into a new or existing repo, from its root, with Node.js 22 or newer and `git`. Every step is a copy; nothing runs from this repo.
+
+1. Take a copy of this repo:
+
+   ```sh
+   template=$(mktemp -d)
+   git clone --depth 1 https://github.com/mustafaabidali/repo-docs-structure.git "$template"
+   ```
+
+2. Copy the five checks, the shared code and their tests:
+
+   ```sh
+   mkdir -p scripts/lib
+   cp "$template"/scripts/*.mjs scripts/
+   cp "$template"/scripts/lib/*.mjs scripts/lib/
+   ```
+
+3. Copy the schema and the starting files. `cp -n` never overwrites a file the repo already has:
+
+   ```sh
+   mkdir -p specs/threads specs/plans specs/design specs/reviews docs/adr docs/ops
+   cp "$template"/specs/manifest.schema.json specs/
+   cp -n "$template"/specs/manifest.json specs/
+   cp -n "$template"/specs/plans/*.md specs/plans/
+   cp -n "$template"/specs/threads/*.md specs/threads/
+   cp -n "$template"/specs/design/.gitkeep specs/design/
+   cp -n "$template"/specs/reviews/.gitkeep specs/reviews/
+   cp -n "$template"/docs/adr/README.md "$template"/docs/adr/TEMPLATE.md docs/adr/
+   cp -n "$template"/docs/ops/decision-log.md docs/ops/
+   ```
+
+4. The Node setup. In a repo with no `package.json`, copy `package.json`, `.nvmrc` and `.npmrc`, set `name`, and run `npm install`. In a repo that has one, add the `kanban`, `threads`, `test:manifest` and `check` scripts from this repo's `package.json`, then run `npm install --save-dev --save-exact ajv@8.20.0 ajv-formats@3.0.1`.
+
+5. CI. Copy `.github/workflows/ci.yml` and `.github/dependabot.yml`, or add the workflow's four check steps to the repo's own CI. The checks need the full history (`fetch-depth: 0`) and the push event's base (`GITHUB_EVENT_BEFORE`), as the workflow sets them.
+
+6. Set `name` and `last_updated` in `specs/manifest.json`, then run `npm run kanban && npm run threads` and `npm run check`. Open a pull request with all of it, then remove the copy: `rm -rf "$template"`.
+
+7. Paste the block in `docs/agents-md-block.md` into the repo's `AGENTS.md`, in a pull request of its own: the rule-files check fails a pull request that changes `AGENTS.md` with anything else.
+
+8. Follow `specs/plans/2026-11-03-docs-structure.md`: replace the starter thread with the repo's own, add the first cards, and move existing plans, designs, reviews and decisions into their fixed homes.
+
+The tests need at least one thread and one plan in the manifest, which the starting files provide. To upgrade, copy the scripts again (step 2) and re-apply any change you made to the values below; `git diff` shows them.
+
+### What a repo may change
+
+| Value | Where | Default |
+|---|---|---|
+| Where new Markdown may go | `ALLOWED_MARKDOWN` in `scripts/check-docs-location.mjs` | the list in "Where new markdown may go", plus `specs/KANBAN.md` |
+| The rule files, and what may travel with them | `RULE_FILES` and `ALLOWED_EXTRAS` in `scripts/check-rule-files-alone.mjs` | `AGENTS.md`, `CLAUDE.md`; the decision log, ADRs, the manifest and its generated views |
+| The ceilings | `CEILINGS` in `scripts/check-manifest.mjs` | 30 active, 10 at priority 1, 3 in progress, 10 owner |
+| The branch a change is judged against outside a pull request | `DEFAULT_BRANCH` in `scripts/changed-files.mjs` | `main` |
+| The archive repo an `archived` URL must point into | `$defs.archiveUrl.pattern` in `specs/manifest.schema.json` | any GitHub file URL under `specs/plans/`, `specs/design/` or `specs/reviews/`; narrow it to the repo's own archive |
+
+The ceiling tests in `scripts/check-manifest.test.mjs` and the list tests in `scripts/lib/paths.test.mjs` probe the defaults, so change a value and its test together.
