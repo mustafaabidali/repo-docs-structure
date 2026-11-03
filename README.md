@@ -417,7 +417,7 @@ All but the last live in one file, `scripts/lib/settings.mjs`. The archive patte
 | Where new Markdown may go | `ALLOWED_MARKDOWN` | the list in "Where new markdown may go", plus `specs/KANBAN.md` |
 | The rule files, and what may travel with them | `RULE_FILES` and `ALLOWED_EXTRAS` | `AGENTS.md`, `CLAUDE.md`; the decision log, ADRs, the manifest and its generated views |
 | The ceilings | `CEILINGS` | 30 active, 10 at priority 1, 3 in progress, 10 owner |
-| The branch a change is judged against outside a pull request | `DEFAULT_BRANCH` | `main` |
+| The default branch. A local run, and a push that creates another branch, are judged from their merge base with it; the push that creates it is judged from the empty tree. A pull request is judged against its own base branch and an ordinary push from the commit before it, so neither reads it | `DEFAULT_BRANCH` | `main` |
 | The archive repo an `archived` URL must point into | `$defs.archiveUrl.pattern`, in `specs/manifest.schema.json` | any GitHub file URL under `specs/plans/`, `specs/design/` or `specs/reviews/`; narrow it to the repo's own archive |
 
 Every test reads these values from where they live, so changing one never needs a test change: `scripts/settings.test.mjs` changes every value in a copy of the repo and runs the whole suite there.

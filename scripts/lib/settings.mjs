@@ -34,9 +34,11 @@ export const ALLOWED_EXTRAS = [
 export const CEILINGS = { total: 30, p1: 10, inProgress: 3, owner: 10 };
 
 /**
- * The repository's default branch. A local run, and a push that creates any
- * other branch, are judged from their merge base with it. A pull request is
- * judged against its own base branch, and an ordinary push from the commit
+ * The repository's default branch, used by the changed-file checks in two
+ * cases: a local run, and a push that creates any other branch, are judged
+ * from their merge base with it; the push that creates this branch itself is
+ * judged from the empty tree, so every file it brings counts. A pull request
+ * is judged against its own base branch, and an ordinary push from the commit
  * before the push to HEAD, so neither reads this value.
  */
 export const DEFAULT_BRANCH = "main";
