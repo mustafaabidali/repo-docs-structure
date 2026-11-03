@@ -355,18 +355,17 @@ Into a new or existing repo, from its root, with Node.js 22 or newer, `git` and 
    done
    ```
 
-3. Copy the schema and the starting files, among them the AGENTS.md block that step 9 needs. The starting manifest, plan and thread come only into a repo with no manifest, so a repo that has one never gains a plan it has not registered:
+3. Copy the schema and the starting files, among them the AGENTS.md block that step 9 needs. Each is copied only when nothing is at its path, not even a link. The starting manifest, plan and thread come only into a repo with no manifest, so a repo that has one never gains a plan it has not registered:
 
    ```sh
    mkdir -p specs/threads specs/plans specs/design specs/reviews docs/adr docs/ops
-   if [ ! -e specs/manifest.json ]; then
-     for f in specs/manifest.json specs/plans/2026-11-03-docs-structure.md specs/threads/docs-structure.md; do
-       cp "$template/$f" "$f"
-     done
+   starting=""
+   if [ ! -e specs/manifest.json ] && [ ! -L specs/manifest.json ]; then
+     starting="specs/manifest.json specs/plans/2026-11-03-docs-structure.md specs/threads/docs-structure.md"
    fi
-   for f in specs/manifest.schema.json specs/design/.gitkeep specs/reviews/.gitkeep docs/README.md docs/agents-md-block.md \
-     docs/adr/README.md docs/adr/TEMPLATE.md docs/ops/decision-log.md; do
-     [ -e "$f" ] || cp "$template/$f" "$f"
+   for f in $starting specs/manifest.schema.json specs/design/.gitkeep specs/reviews/.gitkeep docs/README.md \
+     docs/agents-md-block.md docs/adr/README.md docs/adr/TEMPLATE.md docs/ops/decision-log.md; do
+     [ -e "$f" ] || [ -L "$f" ] || cp "$template/$f" "$f"
    done
    ```
 
@@ -375,7 +374,7 @@ Into a new or existing repo, from its root, with Node.js 22 or newer, `git` and 
    ```sh
    mkdir -p .github/workflows
    for f in package.json .nvmrc .npmrc .github/workflows/ci.yml .github/dependabot.yml; do
-     [ -e "$f" ] || cp "$template/$f" "$f"
+     [ -e "$f" ] || [ -L "$f" ] || cp "$template/$f" "$f"
    done
    npm pkg set "scripts.kanban=node scripts/kanban.mjs" "scripts.threads=node scripts/threads.mjs" \
      "scripts.test:manifest=node --test 'scripts/**/*.test.mjs'" \

@@ -19,7 +19,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
@@ -226,6 +226,16 @@ test("install: the starting files' copy keeps a plan and a thread the repo alrea
   assert.equal(readFileSync(join(repo, "specs", "plans", "2026-11-03-docs-structure.md"), "utf8"), OWN_PLAN);
   assert.equal(readFileSync(join(repo, "specs", "threads", "docs-structure.md"), "utf8"), OWN_THREAD);
   assert.ok(existsSync(join(repo, "specs", "manifest.json")), "a repo with no manifest still gets the starting manifest");
+});
+
+test("install: a dangling link at a starting file's path is left alone, and nothing is written through it", () => {
+  const repo = ownStartingPaths();
+  const target = join(dirname(repo), "not-created.md");
+  mkdirSync(join(repo, "docs"), { recursive: true });
+  symlinkSync(target, join(repo, "docs", "README.md"));
+  runFirstSteps(repo);
+  assert.ok(lstatSync(join(repo, "docs", "README.md")).isSymbolicLink());
+  assert.ok(!existsSync(target), "nothing was written through the link");
 });
 
 test("install: the whole install keeps that plan byte for byte and that thread's hand-written part, and the suite passes", () => {
