@@ -1,8 +1,9 @@
 // The README's Install section, run. Its shell blocks are executed in a
 // made-up repo that already has a package.json and no .nvmrc, with `template`
 // pointing at this checkout, so the steps are proved as written. The blocks
-// that need the network or change the clone (git clone, npm install, rm) are
-// left out; everything else runs in order. A repo whose own README has no such
+// whose commands need the network, need the validators installed, or remove
+// the copy (git clone, npm install, npm run, rm) are left out; everything else
+// runs in order. A repo whose own README has no such
 // section skips these cases.
 
 import assert from "node:assert/strict";
@@ -15,7 +16,8 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const readme = existsSync(join(root, "README.md")) ? readFileSync(join(root, "README.md"), "utf8") : "";
-const NOT_RUN = /\bgit clone\b|\bnpm (install|ci|run)\b|\brm -rf\b/;
+/** A block is left out when one of its lines starts one of these commands; a mention inside a value does not count. */
+const NOT_RUN = /^[ \t]*(git clone|npm (install|ci|run)|rm -rf)\b/m;
 
 /** The shell blocks of the README's Install section, dedented, in order. */
 function installBlocks() {
@@ -83,9 +85,25 @@ test("install: the repo's own package.json keeps its name and scripts and gains 
   for (const name of ["kanban", "threads", "test:manifest", "check"]) assert.equal(ours.scripts[name], template.scripts[name], `scripts.${name}`);
 });
 
-test("install: the installed structure passes the manifest check", { skip }, () => {
+test("install: the installed structure, its board and threads drawn as step 7 does, passes the manifest check", { skip }, () => {
   const repo = install();
   symlinkSync(join(root, "node_modules"), join(repo, "node_modules"), "dir");
-  const r = spawnSync(process.execPath, [join("scripts", "check-manifest.mjs")], { cwd: repo, encoding: "utf8" });
+  for (const script of ["kanban.mjs", "threads.mjs", "check-manifest.mjs"]) {
+    const r = spawnSync(process.execPath, [join("scripts", script)], { cwd: repo, encoding: "utf8" });
+    assert.equal(r.status, 0, `${script}: ${r.stdout}${r.stderr}`);
+  }
+});
+
+test("install: an upgrade, step 2 again, replaces the checks but keeps the repo's own settings", { skip }, () => {
+  const repo = install();
+  const settings = join(repo, "scripts", "lib", "settings.mjs");
+  const ours = readFileSync(settings, "utf8").replace("total: 30", "total: 12");
+  writeFileSync(settings, ours);
+  writeFileSync(join(repo, "scripts", "kanban.mjs"), "// an old copy\n");
+  const step2 = blocks.find((text) => text.includes("scripts/lib/*.mjs"));
+  assert.ok(step2, "the Install section has the block that copies scripts/lib");
+  const r = spawnSync("bash", ["-euo", "pipefail", "-c", step2], { cwd: repo, encoding: "utf8", env: { ...process.env, template: root } });
   assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+  assert.equal(readFileSync(settings, "utf8"), ours);
+  assert.equal(readFileSync(join(repo, "scripts", "kanban.mjs"), "utf8"), readFileSync(join(root, "scripts", "kanban.mjs"), "utf8"));
 });

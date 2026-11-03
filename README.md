@@ -334,7 +334,7 @@ Anywhere else, the location check fails.
 
 ## Install
 
-Into a new or existing repo, from its root, with Node.js 22 or newer and `git`. Every step is a copy; nothing runs from this repo.
+Into a new or existing repo, from its root, with Node.js 22 or newer, `git` and `bash`. The steps copy files and edit the repo's own `package.json`; nothing runs from the copy. A file the repo already has is never overwritten, except the checks themselves in step 2.
 
 1. Take a copy of this repo:
 
@@ -343,39 +343,70 @@ Into a new or existing repo, from its root, with Node.js 22 or newer and `git`. 
    git clone --depth 1 https://github.com/mustafaabidali/repo-docs-structure.git "$template"
    ```
 
-2. Copy the five checks, the shared code and their tests:
+2. Copy the five checks, the shared code and their tests. The settings file, `scripts/lib/settings.mjs`, is copied only when the repo has none, so an upgrade (this step again) keeps the repo's own values:
 
    ```sh
    mkdir -p scripts/lib
    cp "$template"/scripts/*.mjs scripts/
-   cp "$template"/scripts/lib/*.mjs scripts/lib/
+   for f in "$template"/scripts/lib/*.mjs; do
+     name=$(basename "$f")
+     if [ "$name" = settings.mjs ] && [ -e scripts/lib/settings.mjs ]; then continue; fi
+     cp "$f" scripts/lib/
+   done
    ```
 
-3. Copy the schema and the starting files. `cp -n` never overwrites a file the repo already has:
+3. Copy the schema and the starting files, among them the AGENTS.md block that step 9 needs:
 
    ```sh
    mkdir -p specs/threads specs/plans specs/design specs/reviews docs/adr docs/ops
    cp "$template"/specs/manifest.schema.json specs/
-   cp -n "$template"/specs/manifest.json specs/
-   cp -n "$template"/specs/plans/*.md specs/plans/
-   cp -n "$template"/specs/threads/*.md specs/threads/
-   cp -n "$template"/specs/design/.gitkeep specs/design/
-   cp -n "$template"/specs/reviews/.gitkeep specs/reviews/
-   cp -n "$template"/docs/adr/README.md "$template"/docs/adr/TEMPLATE.md docs/adr/
-   cp -n "$template"/docs/ops/decision-log.md docs/ops/
+   for f in specs/manifest.json specs/plans/2026-11-03-docs-structure.md specs/threads/docs-structure.md \
+     specs/design/.gitkeep specs/reviews/.gitkeep docs/README.md docs/agents-md-block.md \
+     docs/adr/README.md docs/adr/TEMPLATE.md docs/ops/decision-log.md; do
+     [ -e "$f" ] || cp "$template/$f" "$f"
+   done
    ```
 
-4. The Node setup. In a repo with no `package.json`, copy `package.json`, `.nvmrc` and `.npmrc`, set `name`, and run `npm install`. In a repo that has one, add the `kanban`, `threads`, `test:manifest` and `check` scripts from this repo's `package.json`, then run `npm install --save-dev --save-exact ajv@8.20.0 ajv-formats@3.0.1`.
+4. The Node setup and CI. A repo with no `package.json`, `.nvmrc`, `.npmrc` or workflow gets this repo's; a repo that has a `package.json` keeps it and gains the four scripts. Both get `.nvmrc`, which the workflow reads for the Node version:
 
-5. CI. Copy `.github/workflows/ci.yml` and `.github/dependabot.yml`, or add the workflow's four check steps to the repo's own CI. The checks need the full history (`fetch-depth: 0`) and the push event's base (`GITHUB_EVENT_BEFORE`), as the workflow sets them.
+   ```sh
+   mkdir -p .github/workflows
+   for f in package.json .nvmrc .npmrc .github/workflows/ci.yml .github/dependabot.yml; do
+     [ -e "$f" ] || cp "$template/$f" "$f"
+   done
+   npm pkg set "scripts.kanban=node scripts/kanban.mjs" "scripts.threads=node scripts/threads.mjs" \
+     "scripts.test:manifest=node --test 'scripts/**/*.test.mjs'" \
+     "scripts.check=node scripts/check-manifest.mjs && node scripts/check-docs-location.mjs && node scripts/check-rule-files-alone.mjs && npm run test:manifest"
+   ```
 
-6. Set `name` and `last_updated` in `specs/manifest.json`, then run `npm run kanban && npm run threads` and `npm run check`. Open a pull request with all of it, then remove the copy: `rm -rf "$template"`.
+   A repo that already had a `.nvmrc` keeps it: it must name Node 22 or newer. A repo that already had `.github/workflows/ci.yml` keeps it: add this repo's four check steps to it, with the full history (`fetch-depth: 0`) and the push event's base (`GITHUB_EVENT_BEFORE`), as this repo's workflow sets them. A new repo sets its own `name` in `package.json`.
 
-7. Paste the block in `docs/agents-md-block.md` into the repo's `AGENTS.md`, in a pull request of its own: the rule-files check fails a pull request that changes `AGENTS.md` with anything else.
+5. Install the two validators, pinned:
 
-8. Follow `specs/plans/2026-11-03-docs-structure.md`: replace the starter thread with the repo's own, add the first cards, and move existing plans, designs, reviews and decisions into their fixed homes.
+   ```sh
+   npm install --save-dev --save-exact ajv@8.20.0 ajv-formats@3.0.1
+   ```
 
-The tests need at least one thread and one plan in the manifest, which the starting files provide. To upgrade, copy the scripts again (step 2) and re-apply any change you made to the values below; `git diff` shows them.
+6. Register what the repo already holds, before the first check, which fails on any file it cannot account for and names it. Each file under `specs/plans/`, `specs/design/` and `specs/reviews/` gets one entry in `metadata.plans`, `metadata.specs` or `metadata.reviews`, tagged `docs-structure` until the repo has threads of its own; a file in a nested folder moves to its folder's root. Each numbered file in `docs/adr/` needs the eight headings, and tags that are thread ids.
+
+7. Set `name` and `last_updated` in `specs/manifest.json`, then draw the board and the threads and run every check:
+
+   ```sh
+   npm run kanban && npm run threads
+   npm run check
+   ```
+
+8. Open a pull request with all of it. Once it is open, remove the copy:
+
+   ```sh
+   rm -rf "$template"
+   ```
+
+9. Paste the block in `docs/agents-md-block.md` into the repo's `AGENTS.md`, in a pull request of its own: the rule-files check fails a pull request that changes `AGENTS.md` with anything else.
+
+10. Follow `specs/plans/2026-11-03-docs-structure.md`: replace the starting thread with the repo's own, add the first cards, and move existing decisions into `docs/adr/`.
+
+The tests need at least one thread and one plan in the manifest, which the starting files provide. `scripts/install.test.mjs` runs the shell blocks above, except the clone, the npm commands and the removal, in a made-up repo that has a `package.json`, so these steps are tested as written.
 
 ### What a repo may change
 
