@@ -192,6 +192,50 @@ function structuredRepo() {
   });
 }
 
+/** Steps 1 to 3 of the Install script (take the copy, copy the checks, copy the starting files), then the copy's removal. */
+function firstSteps() {
+  const lines = installScript().split("\n");
+  const upTo = lines.findIndex((line) => /docs\/ops\/decision-log\.md/.test(line));
+  assert.ok(upTo > 0, "the Install script copies the starting files in step 3");
+  const end = lines.findIndex((line, index) => index > upTo && /^done$/.test(line.trim()));
+  return `${lines.slice(0, end + 1).join("\n")}\nrm -rf "$template"`;
+}
+
+/** @param {string} repo */
+function runFirstSteps(repo) {
+  const r = spawnSync("bash", ["-euo", "pipefail", "-c", firstSteps()], { cwd: repo, encoding: "utf8", env: localEnv({ TEMPLATE_SOURCE: root, TMPDIR: tmpOf(repo) }) });
+  assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+}
+
+const OWN_PLAN = "# Our own plan, at the starting plan's path\n\nWritten by the repo, never by the template.\n";
+const OWN_THREAD = "# Our own thread, at the starting thread's path\n\n## Current state\n\nWritten by the repo.\n";
+
+/** A repo with no manifest that already holds its own documents at the starting plan's and thread's paths. */
+function ownStartingPaths() {
+  return madeUpRepo({
+    "package.json": OWN_PACKAGE,
+    "README.md": OWN_README,
+    "specs/plans/2026-11-03-docs-structure.md": OWN_PLAN,
+    "specs/threads/docs-structure.md": OWN_THREAD,
+  });
+}
+
+test("install: the starting files' copy keeps a plan and a thread the repo already has at their paths, byte for byte", () => {
+  const repo = ownStartingPaths();
+  runFirstSteps(repo);
+  assert.equal(readFileSync(join(repo, "specs", "plans", "2026-11-03-docs-structure.md"), "utf8"), OWN_PLAN);
+  assert.equal(readFileSync(join(repo, "specs", "threads", "docs-structure.md"), "utf8"), OWN_THREAD);
+  assert.ok(existsSync(join(repo, "specs", "manifest.json")), "a repo with no manifest still gets the starting manifest");
+});
+
+test("install: the whole install keeps that plan byte for byte and that thread's hand-written part, and the suite passes", () => {
+  const repo = ownStartingPaths();
+  install(repo);
+  assert.equal(readFileSync(join(repo, "specs", "plans", "2026-11-03-docs-structure.md"), "utf8"), OWN_PLAN);
+  const thread = readFileSync(join(repo, "specs", "threads", "docs-structure.md"), "utf8");
+  assert.ok(thread.startsWith(`${OWN_THREAD.trimEnd()}\n\n<!-- generated:start -->\n`), thread);
+});
+
 test("install: the README's Install section has shell blocks, the clone first and its removal last", () => {
   assert.match(blocks[0], /\bgit clone\b/);
   assert.match(blocks.at(-1), /^rm -rf "\$template"\s*$/);
@@ -232,12 +276,7 @@ test("install: an upgrade, steps 1 to 3 again, replaces the checks but keeps the
   writeFileSync(settings, ownSettings);
   writeFileSync(join(repo, "scripts", "kanban.mjs"), "// an old copy\n");
   const ownSchema = readFileSync(join(repo, "specs", "manifest.schema.json"), "utf8");
-  const upgrade = installScript().split("\n");
-  const upTo = upgrade.findIndex((line) => /docs\/ops\/decision-log\.md/.test(line));
-  assert.ok(upTo > 0, "the Install script copies the starting files in step 3");
-  const steps = `${upgrade.slice(0, upgrade.findIndex((line, index) => index > upTo && /^done$/.test(line.trim())) + 1).join("\n")}\nrm -rf "$template"`;
-  const r = spawnSync("bash", ["-euo", "pipefail", "-c", steps], { cwd: repo, encoding: "utf8", env: localEnv({ TEMPLATE_SOURCE: root, TMPDIR: tmpOf(repo) }) });
-  assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+  runFirstSteps(repo);
   assert.equal(readFileSync(settings, "utf8"), ownSettings);
   assert.equal(readFileSync(join(repo, "specs", "manifest.schema.json"), "utf8"), ownSchema);
   assert.equal(readFileSync(join(repo, "scripts", "kanban.mjs"), "utf8"), readFileSync(join(root, "scripts", "kanban.mjs"), "utf8"));
