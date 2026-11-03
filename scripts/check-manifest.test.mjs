@@ -14,12 +14,13 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { copyCheckout } from "./lib/copy.mjs";
 import { CEILINGS } from "./lib/settings.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -42,7 +43,7 @@ const ARCHIVE_URL = "https://github.com/fixture-org/fixture-archive/blob/main/sp
  */
 function checkerCopy(mutateSchema = () => {}) {
   const copy = mkdtempSync(join(dir, "checker-"));
-  cpSync(join(root, "scripts"), join(copy, "scripts"), { recursive: true });
+  copyCheckout(join(root, "scripts"), join(copy, "scripts"));
   mkdirSync(join(copy, "specs"));
   symlinkSync(join(root, "node_modules"), join(copy, "node_modules"), "dir");
   const schema = JSON.parse(readFileSync(join(root, "specs", "manifest.schema.json"), "utf8"));

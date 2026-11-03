@@ -4,11 +4,13 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
+
+import { copyCheckout, insideCopy } from "./lib/copy.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const self = relative(root, fileURLToPath(import.meta.url)).split(sep).join("/");
@@ -50,18 +52,16 @@ function git(cwd, args) {
   assert.equal(r.status, 0, `git ${args.join(" ")}: ${r.stderr}`);
 }
 
-/** A copy of the checkout (its own git history, the same installed dependencies). */
+/**
+ * A copy of the checkout (its own git history, the same installed
+ * dependencies). It holds no link that leads out of it (copyCheckout), and
+ * every path below is checked with insideCopy before it is touched.
+ */
 function copyRepo() {
   const base = mkdtempSync(join(tmpdir(), "settings-"));
   temps.push(base);
   const repo = join(base, "repo");
-  cpSync(root, repo, {
-    recursive: true,
-    filter: (src) => {
-      const top = relative(root, src).split(sep)[0];
-      return top !== ".git" && top !== "node_modules";
-    },
-  });
+  copyCheckout(root, repo);
   symlinkSync(join(root, "node_modules"), join(repo, "node_modules"), "dir");
   return repo;
 }
@@ -123,7 +123,7 @@ function probe(repo, base, name, files, script) {
   git(repo, ["switch", "-q", "-c", name, base]);
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(dirname(join(repo, path)), { recursive: true });
-    writeFileSync(join(repo, path), text);
+    writeFileSync(insideCopy(repo, join(repo, path)), text);
   }
   git(repo, ["add", "-A"]);
   git(repo, ["commit", "-q", "-m", name]);
@@ -134,7 +134,7 @@ function probe(repo, base, name, files, script) {
 
 test("every changed list, and the changed default branch, is what the checks' command lines judge by", () => {
   const repo = copyRepo();
-  writeFileSync(join(repo, "scripts", "lib", "settings.mjs"), CHANGED_SETTINGS);
+  writeFileSync(insideCopy(repo, join(repo, "scripts", "lib", "settings.mjs")), CHANGED_SETTINGS);
   commitCopy(repo, "trunk");
   pushToOrigin(repo, "trunk");
   const manifest = readFileSync(join(repo, "specs", "manifest.json"), "utf8");
@@ -160,7 +160,7 @@ test("every changed list, and the changed default branch, is what the checks' co
 
 test("every value in scripts/lib/settings.mjs can change and the whole suite still passes", () => {
   const repo = copyRepo();
-  writeFileSync(join(repo, "scripts", "lib", "settings.mjs"), CHANGED_SETTINGS);
+  writeFileSync(insideCopy(repo, join(repo, "scripts", "lib", "settings.mjs")), CHANGED_SETTINGS);
   commitCopy(repo, "trunk");
   const r = runSuite(repo);
   assert.equal(r.code, 0, `${failures(r.out)}\n\n${r.out.slice(-4000)}`);
@@ -176,10 +176,10 @@ function seedCopy(repo) {
   for (const dir of ["specs/plans", "specs/design", "specs/reviews", "specs/threads"]) {
     const full = join(repo, dir);
     if (!existsSync(full)) continue;
-    for (const name of readdirSync(full)) if (name.endsWith(".md")) rmSync(join(full, name));
+    for (const name of readdirSync(insideCopy(repo, full))) if (name.endsWith(".md")) rmSync(insideCopy(repo, join(full, name)));
   }
   const adr = join(repo, "docs", "adr");
-  for (const name of readdirSync(adr)) if (/^\d{4}-.+\.md$/.test(name)) rmSync(join(adr, name));
+  if (existsSync(adr)) for (const name of readdirSync(insideCopy(repo, adr))) if (/^\d{4}-.+\.md$/.test(name)) rmSync(insideCopy(repo, join(adr, name)));
   const today = new Date().toISOString().slice(0, 10);
   const thread = (id, title) => ({ id, title, file: `specs/threads/${id}.md`, created: today });
   const manifest = {
@@ -204,9 +204,10 @@ function seedCopy(repo) {
       reviews: [],
     },
   };
-  writeFileSync(join(repo, "specs", "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-  writeFileSync(join(repo, "specs", "plans", "2026-01-01-probe.md"), "# The probe's plan\n");
-  const schemaPath = join(repo, "specs", "manifest.schema.json");
+  writeFileSync(insideCopy(repo, join(repo, "specs", "manifest.json")), `${JSON.stringify(manifest, null, 2)}\n`);
+  mkdirSync(insideCopy(repo, join(repo, "specs", "plans")), { recursive: true });
+  writeFileSync(insideCopy(repo, join(repo, "specs", "plans", "2026-01-01-probe.md")), "# The probe's plan\n");
+  const schemaPath = insideCopy(repo, join(repo, "specs", "manifest.schema.json"));
   const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
   schema.$defs.archiveUrl.pattern = "^https://github\\.com/acme-co/acme-archive/blob/main/specs/(plans|design|reviews)/[^/]+\\.md$";
   writeFileSync(schemaPath, `${JSON.stringify(schema, null, 2)}\n`);

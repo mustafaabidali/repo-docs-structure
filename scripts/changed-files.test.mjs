@@ -8,13 +8,14 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import * as changed from "./changed-files.mjs";
+import { copyCheckout } from "./lib/copy.mjs";
 import { DEFAULT_BRANCH } from "./lib/settings.mjs";
 
 const { diffRange } = changed;
@@ -168,7 +169,7 @@ function makeRepo() {
   const work = join(base, "work");
   git(base, ["init", "-q", "--bare", "-b", "main", origin]);
   git(base, ["init", "-q", "-b", "main", work]);
-  cpSync(join(root, "scripts"), join(work, "scripts"), { recursive: true });
+  copyCheckout(join(root, "scripts"), join(work, "scripts"));
   writeFileSync(join(work, "scripts", "lib", "settings.mjs"), FIXTURE_SETTINGS);
   git(work, ["add", "-A"]);
   git(work, ["commit", "-q", "-m", "base"]);

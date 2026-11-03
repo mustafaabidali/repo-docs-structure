@@ -11,9 +11,11 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
+
+import { copyCheckout } from "./lib/copy.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const KEEP = "authored text outside the checkout; keep me\n";
@@ -28,14 +30,7 @@ function copyRepo() {
   const base = mkdtempSync(join(tmpdir(), "generators-"));
   temps.push(base);
   const repo = join(base, "repo");
-  cpSync(root, repo, {
-    recursive: true,
-    filter: (src) => {
-      const rel = relative(root, src);
-      const top = rel.split(sep)[0];
-      return top !== ".git" && top !== "node_modules";
-    },
-  });
+  copyCheckout(root, repo);
   const outside = join(base, "outside");
   mkdirSync(outside);
   editManifest(repo, (m) => {
