@@ -15,6 +15,7 @@ import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import * as changed from "./changed-files.mjs";
+import { DEFAULT_BRANCH } from "./lib/settings.mjs";
 
 const { diffRange } = changed;
 
@@ -63,9 +64,9 @@ test("diffRange: a pull request without a base ref throws", () => {
   assert.throws(() => diffRange({ GITHUB_EVENT_NAME: "pull_request" }, fakeGit(["origin/main"])), /GITHUB_BASE_REF/);
 });
 
-test("diffRange: a push with an all-zero before SHA diffs against the merge base with origin/main", () => {
-  const git = fakeGit(["origin/main"]);
-  assert.equal(diffRange({ GITHUB_EVENT_NAME: "push", GITHUB_EVENT_BEFORE: "0".repeat(40) }, git), "origin/main...HEAD");
+test("diffRange: a push with an all-zero before SHA diffs against the merge base with the default branch", () => {
+  const git = fakeGit([`origin/${DEFAULT_BRANCH}`]);
+  assert.equal(diffRange({ GITHUB_EVENT_NAME: "push", GITHUB_EVENT_BEFORE: "0".repeat(40) }, git), `origin/${DEFAULT_BRANCH}...HEAD`);
 });
 
 test("diffRange: a push with no before SHA throws", () => {
@@ -90,9 +91,8 @@ test("diffRange: a push whose before SHA is still missing after the fetch throws
   assert.deepEqual(git.fetched, [SHA_B]);
 });
 
-test("diffRange: outside Actions the range is origin/main...HEAD", () => {
-  assert.equal(changed.DEFAULT_BRANCH, "main");
-  assert.equal(diffRange({}, fakeGit(["origin/main"])), "origin/main...HEAD");
+test("diffRange: outside Actions the range is origin/<DEFAULT_BRANCH>...HEAD", () => {
+  assert.equal(diffRange({}, fakeGit([`origin/${DEFAULT_BRANCH}`])), `origin/${DEFAULT_BRANCH}...HEAD`);
 });
 
 test("diffRange: a pull request into another base branch diffs against that branch", () => {
@@ -123,6 +123,17 @@ function git(cwd, args) {
   return r.stdout.trim();
 }
 
+/**
+ * The end-to-end repo's own settings, so these cases never depend on the
+ * lists or the branch the real repo chose.
+ */
+const FIXTURE_SETTINGS = `export const ALLOWED_MARKDOWN = ["docs/**", "**/README.md", "AGENTS.md"];
+export const RULE_FILES = ["AGENTS.md"];
+export const ALLOWED_EXTRAS = ["docs/ops/decision-log.md"];
+export const CEILINGS = { total: 30, p1: 10, inProgress: 3, owner: 10 };
+export const DEFAULT_BRANCH = "main";
+`;
+
 /** Every temp folder the end-to-end cases make, removed when the file's tests end. */
 const temps = [];
 after(() => { for (const base of temps) rmSync(base, { recursive: true, force: true }); });
@@ -136,6 +147,7 @@ function makeRepo() {
   git(base, ["init", "-q", "--bare", "-b", "main", origin]);
   git(base, ["init", "-q", "-b", "main", work]);
   cpSync(join(root, "scripts"), join(work, "scripts"), { recursive: true });
+  writeFileSync(join(work, "scripts", "lib", "settings.mjs"), FIXTURE_SETTINGS);
   git(work, ["add", "-A"]);
   git(work, ["commit", "-q", "-m", "base"]);
   git(work, ["remote", "add", "origin", origin]);

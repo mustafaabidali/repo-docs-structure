@@ -14,6 +14,8 @@ import { dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { CEILINGS } from "./lib/settings.mjs";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const checker = join(root, "scripts", "check-manifest.mjs");
 const live = JSON.parse(readFileSync(join(root, "specs", "manifest.json"), "utf8"));
@@ -339,60 +341,61 @@ test("rule 7: active_plan must resolve", () => {
 });
 
 // Rule 8 tests build their own boundary state from an empty queue; each test
-// adds exactly the counts it wants to probe.
+// adds exactly the counts it wants to probe, read from the settings, so a repo
+// that changes a ceiling moves the boundary these cases probe with it.
 /** @param {any} m @param {number} count */
 function addActive(m, count) {
   for (let i = 0; i < count; i += 1) addCard(m, `fixture-active-${i}`);
 }
 
-test("rule 8: exactly 30 active cards passes", () => {
+test("rule 8: exactly the total ceiling of active cards passes", () => {
   const r = run("ceiling-total-ok", (m) => {
-    addActive(m, 30);
+    addActive(m, CEILINGS.total);
   });
   assert.equal(r.code, 0, r.out);
 });
 
-test("rule 8: 31 active cards fails with the deferral hint", () => {
+test("rule 8: one active card over the total ceiling fails with the deferral hint", () => {
   const r = run("ceiling-total", (m) => {
-    addActive(m, 31);
+    addActive(m, CEILINGS.total + 1);
   });
   assert.equal(r.code, 1);
-  assert.match(r.out, /31 active cards; ceiling is 30\. Defer a card/);
+  assert.match(r.out, new RegExp(`${CEILINGS.total + 1} active cards; ceiling is ${CEILINGS.total}\\. Defer a card`));
 });
 
-test("rule 8: exactly 10 P1 cards passes", () => {
+test("rule 8: exactly the priority-1 ceiling passes", () => {
   const r = run("ceiling-p1-ok", (m) => {
-    addActive(m, 10);
-    activeCards(m).slice(0, 10).forEach((c) => { c.priority = 1; });
+    addActive(m, CEILINGS.p1);
+    activeCards(m).forEach((c) => { c.priority = 1; });
   });
   assert.equal(r.code, 0, r.out);
 });
 
-test("rule 8: 11 P1 cards fails", () => {
+test("rule 8: one priority-1 card over the ceiling fails", () => {
   const r = run("ceiling-p1", (m) => {
-    addActive(m, 11);
-    activeCards(m).slice(0, 11).forEach((c) => { c.priority = 1; });
+    addActive(m, CEILINGS.p1 + 1);
+    activeCards(m).forEach((c) => { c.priority = 1; });
   });
   assert.equal(r.code, 1);
-  assert.match(r.out, /11 active priority-1 cards; ceiling is 10/);
+  assert.match(r.out, new RegExp(`${CEILINGS.p1 + 1} active priority-1 cards; ceiling is ${CEILINGS.p1}\\b`));
 });
 
-test("rule 8: three in_progress cards passes", () => {
-  const r = run("inprogress-three-ok", (m) => {
-    addActive(m, 3);
+test("rule 8: exactly the in_progress ceiling passes", () => {
+  const r = run("inprogress-ok", (m) => {
+    addActive(m, CEILINGS.inProgress);
     for (const c of activeCards(m)) { c.status = "in_progress"; c.plan = m.work.active_plan; }
   });
   assert.equal(r.code, 0, r.out);
   assert.doesNotMatch(r.out, /WARN/);
 });
 
-test("rule 8: four in_progress cards fails", () => {
+test("rule 8: one in_progress card over the ceiling fails", () => {
   const r = run("ceiling-inprogress", (m) => {
-    addActive(m, 4);
+    addActive(m, CEILINGS.inProgress + 1);
     for (const c of activeCards(m)) { c.status = "in_progress"; c.plan = m.work.active_plan; }
   });
   assert.equal(r.code, 1);
-  assert.match(r.out, /4 cards in_progress; ceiling is 3/);
+  assert.match(r.out, new RegExp(`${CEILINGS.inProgress + 1} cards in_progress; ceiling is ${CEILINGS.inProgress}\\b`));
 });
 
 test("warn: in_progress card on a plan other than active_plan warns but passes", () => {
@@ -426,18 +429,26 @@ test("warn: active_plan with zero active cards warns but passes", () => {
   assert.match(r.out, /WARN work\.active_plan .* has no active card/);
 });
 
-test("rule 8: 11 owner cards fails", () => {
+test("rule 8: exactly the owner ceiling passes", () => {
+  const r = run("ceiling-owner-ok", (m) => {
+    addActive(m, CEILINGS.owner);
+    activeCards(m).forEach((c) => { c.actor = "owner"; });
+  });
+  assert.equal(r.code, 0, r.out);
+});
+
+test("rule 8: one owner card over the ceiling fails", () => {
   const r = run("ceiling-owner", (m) => {
-    addActive(m, 11);
-    activeCards(m).slice(0, 11).forEach((c) => { c.actor = "owner"; });
+    addActive(m, CEILINGS.owner + 1);
+    activeCards(m).forEach((c) => { c.actor = "owner"; });
   });
   assert.equal(r.code, 1);
-  assert.match(r.out, /11 active owner cards; ceiling is 10/);
+  assert.match(r.out, new RegExp(`${CEILINGS.owner + 1} active owner cards; ceiling is ${CEILINGS.owner}\\b`));
 });
 
 test("rule 8: deferred cards do not count toward ceilings", () => {
   const r = run("deferred-exempt", (m) => {
-    addActive(m, 30);
+    addActive(m, CEILINGS.total);
     for (let i = 0; i < 5; i += 1) {
       const c = addCard(m, `deferred-extra-${i}`);
       c.status = "deferred"; delete c.acceptance;
