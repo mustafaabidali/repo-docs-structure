@@ -12,7 +12,8 @@
 // - a repo that already has the structure: its own manifest (a sign-in thread,
 //   an archived entry from another owner), its own schema narrowed to that
 //   owner's archive, its own CI workflow with no concurrency block, and a
-//   tracked .github/notes.md, the path one command-line probe adds.
+//   tracked .github/notes.md and scripts/probe.mjs, paths a command-line
+//   probe adds or once added.
 //
 // This file tests the template itself, so it lives in template-tests/, which
 // the Install steps never copy: an adopting repo never runs it against its own
@@ -190,8 +191,9 @@ function structuredRepo() {
     "specs/manifest.json": `${JSON.stringify(manifest, null, 2)}\n`,
     "specs/manifest.schema.json": `${JSON.stringify(schema, null, 2)}\n`,
     "specs/plans/2026-01-15-sign-in.md": "# Sign-in by text\n\nThe plan.\n",
-    // A file at the path a command-line probe adds: the probe must still add, never modify.
+    // Files at paths the command-line probes add, or once added: a probe must still add, never modify.
     ".github/notes.md": "Notes the repo already tracks.\n",
+    "scripts/probe.mjs": "// a script of the repo's own\n",
   });
 }
 
