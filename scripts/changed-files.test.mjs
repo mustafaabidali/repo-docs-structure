@@ -22,6 +22,7 @@ const { diffRange } = changed;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SHA_A = "a".repeat(40);
 const SHA_B = "b".repeat(40);
+const EMPTY_TREE = "e".repeat(40);
 
 /**
  * A fake git: `present` refs exist; `fetch` adds `fetchable` refs and records its argument.
@@ -34,6 +35,7 @@ function fakeGit(present, fetchable = []) {
   return {
     fetched,
     hasCommit: (/** @type {string} */ ref) => refs.has(ref),
+    emptyTree: () => EMPTY_TREE,
     fetch: (/** @type {string} */ refspec) => {
       fetched.push(refspec);
       for (const ref of fetchable) refs.add(ref);
@@ -64,9 +66,29 @@ test("diffRange: a pull request without a base ref throws", () => {
   assert.throws(() => diffRange({ GITHUB_EVENT_NAME: "pull_request" }, fakeGit(["origin/main"])), /GITHUB_BASE_REF/);
 });
 
-test("diffRange: a push with an all-zero before SHA diffs against the merge base with the default branch", () => {
+test("diffRange: a push that creates another branch diffs against its merge base with the default branch", () => {
   const git = fakeGit([`origin/${DEFAULT_BRANCH}`]);
-  assert.equal(diffRange({ GITHUB_EVENT_NAME: "push", GITHUB_EVENT_BEFORE: "0".repeat(40) }, git), `origin/${DEFAULT_BRANCH}...HEAD`);
+  const env = { GITHUB_EVENT_NAME: "push", GITHUB_EVENT_BEFORE: "0".repeat(40), GITHUB_REF_NAME: `${DEFAULT_BRANCH}-not` };
+  assert.equal(diffRange(env, git), `origin/${DEFAULT_BRANCH}...HEAD`);
+});
+
+test("diffRange: a push that creates the default branch itself diffs from the empty tree", () => {
+  const git = fakeGit([`origin/${DEFAULT_BRANCH}`]);
+  const env = { GITHUB_EVENT_NAME: "push", GITHUB_EVENT_BEFORE: "0".repeat(40), GITHUB_REF_NAME: DEFAULT_BRANCH };
+  assert.equal(diffRange(env, git), `${EMPTY_TREE}..HEAD`);
+  assert.deepEqual(git.fetched, []);
+});
+
+test("diffRange: a push that creates a branch without naming it throws", () => {
+  assert.throws(() => diffRange({ GITHUB_EVENT_NAME: "push", GITHUB_EVENT_BEFORE: "0".repeat(40) }, fakeGit([`origin/${DEFAULT_BRANCH}`])), /GITHUB_REF_NAME/);
+});
+
+test("emptyTree: the real git's empty tree diffs to every file in HEAD", () => {
+  const tree = changed.gitAt(root).emptyTree();
+  assert.match(tree, /^[0-9a-f]{40,64}$/);
+  const r = spawnSync("git", ["diff", "--name-status", "--no-renames", `${tree}..HEAD`, "--", "package.json"], { cwd: root, encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, "A\tpackage.json\n");
 });
 
 test("diffRange: a push with no before SHA throws", () => {
@@ -190,12 +212,39 @@ test("checks: a pull request whose base branch cannot be found fails both checks
   }
 });
 
-test("checks: a push with an all-zero before SHA still judges the commits since origin/main", () => {
+test("checks: a push that creates another branch still judges the commits since origin/main", () => {
   const work = makeRepo();
   commitFile(work, "bin/notes.md");
-  const r = runCheck(work, "check-docs-location.mjs", { GITHUB_EVENT_NAME: "push", GITHUB_EVENT_BEFORE: "0".repeat(40) });
+  const r = runCheck(work, "check-docs-location.mjs", { GITHUB_EVENT_NAME: "push", GITHUB_EVENT_BEFORE: "0".repeat(40), GITHUB_REF_NAME: "feature" });
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /- bin\/notes\.md/);
+});
+
+/** Push main and fetch it back, so origin/main is HEAD: the state of the push that creates main. @param {string} work */
+function pushMain(work) {
+  git(work, ["push", "-q", "origin", "main"]);
+  git(work, ["fetch", "-q", "origin"]);
+}
+
+const CREATE_MAIN = { GITHUB_EVENT_NAME: "push", GITHUB_EVENT_BEFORE: "0".repeat(40), GITHUB_REF_NAME: "main" };
+
+test("checks: the push that creates main, with a Markdown file outside the allowed folders, fails", () => {
+  const work = makeRepo();
+  commitFile(work, "bin/notes.md");
+  pushMain(work);
+  const r = runCheck(work, "check-docs-location.mjs", CREATE_MAIN);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /- bin\/notes\.md/);
+});
+
+test("checks: the push that creates main, with a rule file and code together, fails", () => {
+  const work = makeRepo();
+  commitFile(work, "AGENTS.md");
+  commitFile(work, "scripts/tool.mjs");
+  pushMain(work);
+  const r = runCheck(work, "check-rule-files-alone.mjs", CREATE_MAIN);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /- scripts\/tool\.mjs/);
 });
 
 // Review finding 4: git quotes unusual names in its default output
