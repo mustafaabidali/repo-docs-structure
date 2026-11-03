@@ -114,30 +114,45 @@ function pushToOrigin(repo, branch) {
 }
 
 /**
- * One command-line probe: on a fresh branch from `base`, commit `files` and
- * run `script` as a local run. Returns its exit code and output, and goes back
- * to `base`.
+ * The probes' baseline: only this checkout's scripts, with every setting
+ * changed, committed on trunk and pushed to a local origin. None of the
+ * repo's own files are in it, so each probe's file is always an addition.
+ */
+function probeBaseline() {
+  const base = mkdtempSync(join(tmpdir(), "settings-probes-"));
+  temps.push(base);
+  const repo = join(base, "repo");
+  copyCheckout(join(root, "scripts"), join(repo, "scripts"));
+  writeFileSync(insideCopy(repo, join(repo, "scripts", "lib", "settings.mjs")), CHANGED_SETTINGS);
+  commitCopy(repo, "trunk");
+  pushToOrigin(repo, "trunk");
+  return repo;
+}
+
+/**
+ * One command-line probe: on a fresh branch from `base`, commit `files`, each
+ * an addition whatever the ignore rules, and run `script` as a local run.
+ * Returns its exit code and output, and goes back to `base`.
  * @param {string} repo @param {string} base @param {string} name @param {Record<string, string>} files @param {string} script
  */
 function probe(repo, base, name, files, script) {
   git(repo, ["switch", "-q", "-c", name, base]);
   for (const [path, text] of Object.entries(files)) {
-    mkdirSync(dirname(join(repo, path)), { recursive: true });
+    mkdirSync(insideCopy(repo, dirname(join(repo, path))), { recursive: true });
     writeFileSync(insideCopy(repo, join(repo, path)), text);
   }
-  git(repo, ["add", "-A"]);
+  git(repo, ["add", "-f", "--", ...Object.keys(files)]);
   git(repo, ["commit", "-q", "-m", name]);
+  const status = spawnSync("git", ["diff", "--name-status", "--no-renames", `${base}..HEAD`], { cwd: repo, encoding: "utf8" }).stdout;
+  assert.deepEqual(status.trim().split("\n").sort(), Object.keys(files).map((path) => `A\t${path}`).sort(), `${name}: every probe file is an addition`);
   const r = spawnSync(process.execPath, [join("scripts", script)], { cwd: repo, encoding: "utf8", env: localEnv() });
   git(repo, ["switch", "-q", base]);
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }
 
 test("every changed list, and the changed default branch, is what the checks' command lines judge by", () => {
-  const repo = copyRepo();
-  writeFileSync(insideCopy(repo, join(repo, "scripts", "lib", "settings.mjs")), CHANGED_SETTINGS);
-  commitCopy(repo, "trunk");
-  pushToOrigin(repo, "trunk");
-  const manifest = readFileSync(join(repo, "specs", "manifest.json"), "utf8");
+  const repo = probeBaseline();
+  const manifest = `${JSON.stringify({ name: "probe" }, null, 2)}\n`;
   const cases = [
     // ALLOWED_MARKDOWN: specs/** is allowed only by the changed list; .github/** only by the default.
     { name: "markdown-pass", script: "check-docs-location.mjs", files: { "specs/notes.md": "x\n" }, code: 0 },
@@ -146,7 +161,7 @@ test("every changed list, and the changed default branch, is what the checks' co
     { name: "rules-fail", script: "check-rule-files-alone.mjs", files: { "RULES.md": "x\n", "scripts/probe.mjs": "x\n" }, code: 1, names: "scripts/probe.mjs" },
     { name: "rules-pass", script: "check-rule-files-alone.mjs", files: { "AGENTS.md": "x\n", "scripts/probe.mjs": "x\n" }, code: 0 },
     // ALLOWED_EXTRAS: only specs/manifest.json may travel with a rule file; the decision log no longer may.
-    { name: "extras-pass", script: "check-rule-files-alone.mjs", files: { "RULES.md": "x\n", "specs/manifest.json": `${manifest}\n` }, code: 0 },
+    { name: "extras-pass", script: "check-rule-files-alone.mjs", files: { "RULES.md": "x\n", "specs/manifest.json": manifest }, code: 0 },
     { name: "extras-fail", script: "check-rule-files-alone.mjs", files: { "RULES.md": "x\n", "docs/ops/decision-log.md": "x\n" }, code: 1, names: "docs/ops/decision-log.md" },
   ];
   for (const c of cases) {
