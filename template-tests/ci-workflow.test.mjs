@@ -45,11 +45,18 @@ function evaluate(template, context) {
 }
 
 const base = { workflow: "CI", repository: "owner/repo" };
-/** A push to a branch of this repo. @param {string} branch */
-const push = (branch) => ({ github: { ...base, event_name: "push", ref: `refs/heads/${branch}`, ref_name: branch, head_ref: "", event: {} } });
-/** A pull request, its head branch in a fork. @param {number} number @param {string} head */
-const forkPullRequest = (number, head) => ({
-  github: { ...base, event_name: "pull_request", ref: `refs/pull/${number}/merge`, ref_name: `${number}/merge`, head_ref: head, event: { pull_request: { number } } },
+/**
+ * Each run differs in every value a run has of its own (its id, number,
+ * attempt and commit), so a group that keys on any of them gives two runs of
+ * the same source two groups, and the cases below fail.
+ * @param {number} run
+ */
+const runValues = (run) => ({ run_id: 9000 + run, run_number: run, run_attempt: 1, sha: String(run).repeat(40).slice(0, 40) });
+/** A push to a branch of this repo. @param {string} branch @param {number} [run] */
+const push = (branch, run = 1) => ({ github: { ...base, ...runValues(run), event_name: "push", ref: `refs/heads/${branch}`, ref_name: branch, head_ref: "", event: {} } });
+/** A pull request, its head branch in a fork. @param {number} number @param {string} head @param {number} [run] */
+const forkPullRequest = (number, head, run = 1) => ({
+  github: { ...base, ...runValues(run), event_name: "pull_request", ref: `refs/pull/${number}/merge`, ref_name: `${number}/merge`, head_ref: head, event: { pull_request: { number } } },
 });
 
 test("evaluate: reads context paths, falls through || and refuses other forms", () => {
@@ -64,9 +71,19 @@ test("ci: a push to main and two fork pull requests from their own main get thre
   assert.equal(new Set(groups).size, 3, `groups: ${groups.join(" | ")}`);
 });
 
-test("ci: two pushes to the same branch share a group, and a newer run cancels the older", () => {
+test("ci: two pushes to the same branch, two separate runs, share a group, and a newer run cancels the older", () => {
   const { group, cancel } = concurrency(readFileSync(workflowPath, "utf8"));
-  assert.equal(evaluate(group, push("main")), evaluate(group, push("main")));
-  assert.notEqual(evaluate(group, push("main")), evaluate(group, push("feature")));
+  assert.equal(evaluate(group, push("main", 1)), evaluate(group, push("main", 2)));
   assert.equal(cancel, "true");
+});
+
+test("ci: two runs of one pull request share a group", () => {
+  const { group } = concurrency(readFileSync(workflowPath, "utf8"));
+  assert.equal(evaluate(group, forkPullRequest(5, "main", 1)), evaluate(group, forkPullRequest(5, "main", 2)));
+});
+
+test("ci: a push and a pull request get two groups, and so do pushes to two branches", () => {
+  const { group } = concurrency(readFileSync(workflowPath, "utf8"));
+  assert.notEqual(evaluate(group, push("main")), evaluate(group, forkPullRequest(5, "feature")));
+  assert.notEqual(evaluate(group, push("main")), evaluate(group, push("feature")));
 });
