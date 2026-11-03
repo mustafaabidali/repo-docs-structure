@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { after, test } from "node:test";
@@ -108,25 +108,55 @@ test("every value in scripts/lib/settings.mjs can change and the whole suite sti
   assert.equal(r.code, 0, `${failures(r.out)}\n\n${r.out.slice(-4000)}`);
 });
 
-test("a repo whose own manifest registers sign-in, starts with an authentication thread, holds an archived entry and narrows the archive pattern still passes the whole suite", () => {
-  const repo = copyRepo();
-  const manifestPath = join(repo, "specs", "manifest.json");
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  const thread = (id, title) => ({ id, title, file: `specs/threads/${id}.md`, created: manifest.last_updated });
-  manifest.metadata.threads.unshift(thread("authentication", "Authentication"), thread("sign-in", "Sign-in"));
-  manifest.metadata.plans.push({
-    id: "plan-old-sign-in",
-    title: "The old sign-in plan",
-    archived: "https://github.com/acme-co/acme-archive/blob/main/specs/plans/2026-01-01-old-sign-in.md",
-    created: manifest.last_updated,
-    status: "completed",
-    tags: ["authentication", "sign-in"],
-  });
-  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+/**
+ * Replace the copy's manifest, its registered documents, its thread files and
+ * its ADRs with a seeded set of its own, so nothing of the repo's own state
+ * (its threads, its archived entries, its archive pattern) reaches the probe.
+ * @param {string} repo
+ */
+function seedCopy(repo) {
+  for (const dir of ["specs/plans", "specs/design", "specs/reviews", "specs/threads"]) {
+    const full = join(repo, dir);
+    if (!existsSync(full)) continue;
+    for (const name of readdirSync(full)) if (name.endsWith(".md")) rmSync(join(full, name));
+  }
+  const adr = join(repo, "docs", "adr");
+  for (const name of readdirSync(adr)) if (/^\d{4}-.+\.md$/.test(name)) rmSync(join(adr, name));
+  const today = new Date().toISOString().slice(0, 10);
+  const thread = (id, title) => ({ id, title, file: `specs/threads/${id}.md`, created: today });
+  const manifest = {
+    $schema: "./manifest.schema.json",
+    name: "Seeded probe",
+    last_updated: today,
+    work: { active_plan: "plan-probe", next: [] },
+    metadata: {
+      threads: [thread("authentication", "Authentication"), thread("sign-in", "Sign-in")],
+      plans: [
+        { id: "plan-probe", title: "The probe's plan", file: "specs/plans/2026-01-01-probe.md", created: today, status: "approved", tags: ["authentication"] },
+        {
+          id: "plan-old-sign-in",
+          title: "The old sign-in plan",
+          archived: "https://github.com/acme-co/acme-archive/blob/main/specs/plans/2026-01-01-old-sign-in.md",
+          created: today,
+          status: "completed",
+          tags: ["authentication", "sign-in"],
+        },
+      ],
+      specs: [],
+      reviews: [],
+    },
+  };
+  writeFileSync(join(repo, "specs", "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  writeFileSync(join(repo, "specs", "plans", "2026-01-01-probe.md"), "# The probe's plan\n");
   const schemaPath = join(repo, "specs", "manifest.schema.json");
   const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
   schema.$defs.archiveUrl.pattern = "^https://github\\.com/acme-co/acme-archive/blob/main/specs/(plans|design|reviews)/[^/]+\\.md$";
   writeFileSync(schemaPath, `${JSON.stringify(schema, null, 2)}\n`);
+}
+
+test("a copy seeded with its own manifest (an authentication thread first, sign-in, an archived entry) and its own narrowed archive pattern passes the checks and the whole suite", () => {
+  const repo = copyRepo();
+  seedCopy(repo);
   for (const script of ["threads.mjs", "kanban.mjs", "check-manifest.mjs"]) {
     const r = spawnSync(process.execPath, [join("scripts", script)], { cwd: repo, encoding: "utf8", env: localEnv() });
     assert.equal(r.status, 0, `${script}: ${r.stdout}${r.stderr}`);
