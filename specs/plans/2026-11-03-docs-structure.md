@@ -8,7 +8,7 @@ The first plan of a repo that has just installed the docs structure. It is regis
 2. Replace the `docs-structure` thread with the repo's own features or milestones, one entry in `metadata.threads[]` each, in a pull request that touches nothing else. Write each thread file's current-state paragraph by hand, above its generated block.
 3. Add a card to `work.next[]` for each piece of work, with every tag that applies and one acceptance line.
 4. Move existing plans, designs and reviews into `specs/plans/`, `specs/design/` and `specs/reviews/` with dated names, and register each one. Existing architecture decisions become numbered files in `docs/adr/`, written from `docs/adr/TEMPLATE.md`.
-5. If the repo keeps Markdown elsewhere by design, add those folders to `ALLOWED_MARKDOWN` in `scripts/check-docs-location.mjs`. If the agents read rules from other files, add them to `RULE_FILES` in `scripts/check-rule-files-alone.mjs`.
+5. If the repo keeps Markdown elsewhere by design, add those folders to `ALLOWED_MARKDOWN` in `scripts/lib/settings.mjs`. If the agents read rules from other files, add them to `RULE_FILES` there.
 6. Paste the block in `docs/agents-md-block.md` into the repo's `AGENTS.md`, in a pull request of its own.
 7. Run `npm run kanban && npm run threads`, then `npm run check`.
 

@@ -315,7 +315,7 @@ The block in `AGENTS.md`:
 
 ## Where new markdown may go
 
-The default list. Add your own app folders to `ALLOWED_MARKDOWN` in `check-docs-location.mjs`.
+The default list. Add your own app folders to `ALLOWED_MARKDOWN` in `scripts/lib/settings.mjs`.
 
 - `docs/**`
 - `specs/design/**`, `specs/plans/**`, `specs/reviews/**`, `specs/threads/**`
@@ -379,12 +379,14 @@ The tests need at least one thread and one plan in the manifest, which the start
 
 ### What a repo may change
 
+All but the last live in one file, `scripts/lib/settings.mjs`. The archive pattern lives in the schema, where the validator reads it.
+
 | Value | Where | Default |
 |---|---|---|
-| Where new Markdown may go | `ALLOWED_MARKDOWN` in `scripts/check-docs-location.mjs` | the list in "Where new markdown may go", plus `specs/KANBAN.md` |
-| The rule files, and what may travel with them | `RULE_FILES` and `ALLOWED_EXTRAS` in `scripts/check-rule-files-alone.mjs` | `AGENTS.md`, `CLAUDE.md`; the decision log, ADRs, the manifest and its generated views |
-| The ceilings | `CEILINGS` in `scripts/check-manifest.mjs` | 30 active, 10 at priority 1, 3 in progress, 10 owner |
-| The branch a change is judged against outside a pull request | `DEFAULT_BRANCH` in `scripts/changed-files.mjs` | `main` |
-| The archive repo an `archived` URL must point into | `$defs.archiveUrl.pattern` in `specs/manifest.schema.json` | any GitHub file URL under `specs/plans/`, `specs/design/` or `specs/reviews/`; narrow it to the repo's own archive |
+| Where new Markdown may go | `ALLOWED_MARKDOWN` | the list in "Where new markdown may go", plus `specs/KANBAN.md` |
+| The rule files, and what may travel with them | `RULE_FILES` and `ALLOWED_EXTRAS` | `AGENTS.md`, `CLAUDE.md`; the decision log, ADRs, the manifest and its generated views |
+| The ceilings | `CEILINGS` | 30 active, 10 at priority 1, 3 in progress, 10 owner |
+| The branch a change is judged against outside a pull request | `DEFAULT_BRANCH` | `main` |
+| The archive repo an `archived` URL must point into | `$defs.archiveUrl.pattern`, in `specs/manifest.schema.json` | any GitHub file URL under `specs/plans/`, `specs/design/` or `specs/reviews/`; narrow it to the repo's own archive |
 
-The ceiling tests in `scripts/check-manifest.test.mjs` and the list tests in `scripts/lib/paths.test.mjs` probe the defaults, so change a value and its test together.
+Every test reads these values from where they live, so changing one never needs a test change: `scripts/settings.test.mjs` changes every value in a copy of the repo and runs the whole suite there.

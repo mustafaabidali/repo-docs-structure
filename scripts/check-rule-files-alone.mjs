@@ -3,24 +3,15 @@
  * Keeps agent-rule changes isolated from code and unrelated repository changes.
  * ADR registration, the decision log, and generated manifest views may travel with them.
  *
- * RULE_FILES lists the files agents read as rules, as globs from the root. Add
- * any other rules file your agents load (a tool's own rules folder, a nested
- * AGENTS.md) so its changes travel alone too.
+ * The rule files and the extras are RULE_FILES and ALLOWED_EXTRAS in
+ * scripts/lib/settings.mjs.
  */
 
 import process from "node:process";
 
 import { changedFilesOrFail } from "./changed-files.mjs";
 import { isMain, ruleFileViolations } from "./lib/paths.mjs";
-
-export const RULE_FILES = ["AGENTS.md", "CLAUDE.md"];
-export const ALLOWED_EXTRAS = [
-  "docs/adr/**",
-  "docs/ops/decision-log.md",
-  "specs/manifest.json",
-  "specs/KANBAN.md",
-  "specs/threads/**",
-];
+import { ALLOWED_EXTRAS, RULE_FILES } from "./lib/settings.mjs";
 
 if (isMain(import.meta.url)) {
   const files = changedFilesOrFail("check-rule-files-alone");

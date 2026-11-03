@@ -17,8 +17,8 @@
  *      archived URL matches the schema's $defs.archiveUrl pattern; narrow it
  *      there to this repository's archive repo.
  *   7. work.active_plan resolves to plans[].id.
- *   8. Ceilings on active cards (CEILINGS below): 30 total, 10 P1,
- *      3 in_progress, 10 owner.
+ *   8. Ceilings on active cards: CEILINGS in scripts/lib/settings.mjs (by
+ *      default 30 total, 10 P1, 3 in_progress, 10 owner).
  *   9. Every D-NNN cited in a scope resolves to a heading in docs/ops/decision-log.md.
  *  10. kanban.mjs --check and threads.mjs --check pass.
  *  Carried over: no created later than last_updated.
@@ -43,6 +43,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
 import { ADR_SECTIONS, actorOf, duplicateAdrNumbers, isActive, manifestPath, readAdrs, readManifest, walkMarkdown } from "./lib/manifest.mjs";
+import { CEILINGS } from "./lib/settings.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const givenPath = process.argv[2];
@@ -51,9 +52,6 @@ const fixtureMode = givenPath !== undefined;
 const schemaPath = join(root, "specs", "manifest.schema.json");
 const decisionLogPath = join(root, "docs", "ops", "decision-log.md");
 
-// The template's ceilings. A repo may change them here; the rule 8 cases in
-// check-manifest.test.mjs probe these values, so change the two together.
-const CEILINGS = { total: 30, p1: 10, inProgress: 3, owner: 10 };
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REGISTERED_DIRS = ["specs/plans", "specs/design", "specs/reviews"];
 

@@ -10,8 +10,9 @@
  * force-push or a shallow fetch the checks fail and say why, instead of
  * passing without looking.
  *
- * Outside a pull request, the change set is judged against DEFAULT_BRANCH;
- * change it if the repository's default branch is not main.
+ * A pull request is judged against its base branch and an ordinary push from
+ * the commit before the push. A local run, and a push that creates a branch,
+ * are judged from their merge base with DEFAULT_BRANCH (scripts/lib/settings.mjs).
  */
 
 import { spawnSync } from "node:child_process";
@@ -20,10 +21,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 import { isMain } from "./lib/paths.mjs";
+import { DEFAULT_BRANCH } from "./lib/settings.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ZERO_SHA = /^0+$/;
-export const DEFAULT_BRANCH = "main";
 
 /** @param {string[]} args @param {string} cwd */
 function runGit(args, cwd = root) {
