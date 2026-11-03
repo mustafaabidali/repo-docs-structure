@@ -1,0 +1,31 @@
+{
+  "$schema": "./manifest.schema.json",
+  "name": "repo-docs-structure",
+  "last_updated": "2026-11-03",
+  "work": {
+    "active_plan": "plan-docs-structure",
+    "next": []
+  },
+  "metadata": {
+    "threads": [
+      {
+        "id": "docs-structure",
+        "title": "The docs structure",
+        "file": "specs/threads/docs-structure.md",
+        "created": "2026-11-03"
+      }
+    ],
+    "plans": [
+      {
+        "id": "plan-docs-structure",
+        "title": "Adopt the docs structure",
+        "file": "specs/plans/2026-11-03-docs-structure.md",
+        "created": "2026-11-03",
+        "status": "approved",
+        "tags": ["docs-structure"]
+      }
+    ],
+    "specs": [],
+    "reviews": []
+  }
+}
