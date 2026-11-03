@@ -1,0 +1,409 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Project manifest",
+  "description": "Work queue and document registries. Every fact lives in one place; the manifest points at documents and does not copy them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "name",
+    "last_updated",
+    "work",
+    "metadata"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "./manifest.schema.json"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "last_updated": {
+      "$ref": "#/$defs/date"
+    },
+    "work": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "active_plan",
+        "next"
+      ],
+      "properties": {
+        "active_plan": {
+          "$ref": "#/$defs/id"
+        },
+        "next": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/card"
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "threads",
+        "plans",
+        "specs",
+        "reviews"
+      ],
+      "properties": {
+        "threads": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/thread"
+          }
+        },
+        "plans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/registryEntry"
+          }
+        },
+        "specs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/registryEntry"
+          }
+        },
+        "reviews": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/registryEntry"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$"
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "format": "date"
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/id"
+      }
+    },
+    "actor": {
+      "type": "string",
+      "enum": [
+        "owner",
+        "agent"
+      ]
+    },
+    "thread": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "file",
+        "created"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file": {
+          "type": "string",
+          "pattern": "^specs/threads/[a-z0-9-]+\\.md$"
+        },
+        "created": {
+          "$ref": "#/$defs/date"
+        }
+      }
+    },
+    "card": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/activeCard"
+        },
+        {
+          "$ref": "#/$defs/deferredCard"
+        }
+      ]
+    },
+    "activeCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "created",
+        "priority",
+        "status",
+        "scope",
+        "tags",
+        "acceptance"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "created": {
+          "$ref": "#/$defs/date"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tags": {
+          "$ref": "#/$defs/tags"
+        },
+        "actor": {
+          "$ref": "#/$defs/actor"
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "plan": {
+          "$ref": "#/$defs/id"
+        },
+        "spec": {
+          "$ref": "#/$defs/id"
+        },
+        "blocked_by": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "open",
+            "in_progress",
+            "paused",
+            "blocked"
+          ]
+        },
+        "acceptance": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "deferredCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "created",
+        "priority",
+        "status",
+        "scope",
+        "tags",
+        "deferred"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "created": {
+          "$ref": "#/$defs/date"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tags": {
+          "$ref": "#/$defs/tags"
+        },
+        "actor": {
+          "$ref": "#/$defs/actor"
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "plan": {
+          "$ref": "#/$defs/id"
+        },
+        "spec": {
+          "$ref": "#/$defs/id"
+        },
+        "blocked_by": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "status": {
+          "type": "string",
+          "const": "deferred"
+        },
+        "deferred": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "date",
+            "reason"
+          ],
+          "properties": {
+            "date": {
+              "$ref": "#/$defs/date"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "registryEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "created",
+        "status",
+        "tags"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "created": {
+          "$ref": "#/$defs/date"
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tags": {
+          "$ref": "#/$defs/tags"
+        },
+        "actor": {
+          "$ref": "#/$defs/actor"
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "depends_on": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "supersedes": {
+          "$ref": "#/$defs/id"
+        },
+        "superseded_by": {
+          "$ref": "#/$defs/id"
+        },
+        "file": {
+          "$ref": "#/$defs/registryFile"
+        },
+        "archived": {
+          "$ref": "#/$defs/archiveUrl"
+        },
+        "figma": {
+          "$ref": "#/$defs/figma"
+        }
+      },
+      "description": "A plan, design or review. Exactly one of file (the record is in this repo) or archived (it moved to the archive repo).",
+      "oneOf": [
+        {
+          "properties": {
+            "file": {
+              "$ref": "#/$defs/registryFile"
+            }
+          },
+          "required": [
+            "file"
+          ]
+        },
+        {
+          "properties": {
+            "archived": {
+              "$ref": "#/$defs/archiveUrl"
+            }
+          },
+          "required": [
+            "archived"
+          ]
+        }
+      ]
+    },
+    "registryFile": {
+      "type": "string",
+      "pattern": "^(specs/(plans|design|reviews)/[^/]+\\.md)$",
+      "$comment": "A record in this repo: a flat path under specs/plans, specs/design or specs/reviews."
+    },
+    "archiveUrl": {
+      "$comment": "The archive pattern. An archived registry entry points into a separate archive repo. The default accepts a GitHub file URL into specs/plans, specs/design or specs/reviews of any repo; narrow it to your own archive repo, for example ^https://github\\.com/<owner>/<repo>-archive/blob/main/specs/(plans|design|reviews)/[^/]+\\.md$",
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/blob/[^/]+/specs/(plans|design|reviews)/[^/]+\\.md$"
+    },
+    "figma": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "page_id"
+      ],
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "page_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

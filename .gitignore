@@ -1,0 +1,5 @@
+# Node dependencies of the docs checks.
+node_modules/
+
+# Finder metadata.
+.DS_Store
