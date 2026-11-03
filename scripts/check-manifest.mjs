@@ -42,15 +42,13 @@ import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
-import { ADR_SECTIONS, actorOf, duplicateAdrNumbers, isActive, manifestPath, readAdrs, readManifest, walkMarkdown } from "./lib/manifest.mjs";
+import { ADR_SECTIONS, actorOf, duplicateAdrNumbers, insideRepo, isActive, manifestPath, readAdrs, readManifest, walkMarkdown } from "./lib/manifest.mjs";
 import { CEILINGS } from "./lib/settings.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const givenPath = process.argv[2];
-const path = resolve(givenPath ?? manifestPath(root));
 const fixtureMode = givenPath !== undefined;
-const schemaPath = join(root, "specs", "manifest.schema.json");
-const decisionLogPath = join(root, "docs", "ops", "decision-log.md");
+const DECISION_LOG = "docs/ops/decision-log.md";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REGISTERED_DIRS = ["specs/plans", "specs/design", "specs/reviews"];
@@ -60,12 +58,27 @@ function oneLine(value) {
   return String(value).replace(/\s+/g, " ").trim();
 }
 
-/** @param {string} relative */
-function isFile(relative) {
+/** @param {unknown} error */
+function messageOf(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Why the repo file `relative` cannot be used, or null when it is a file
+ * inside the repo. A link out of the repo is named, never followed.
+ * @param {string} relative
+ */
+function fileProblem(relative) {
+  let target;
   try {
-    return statSync(resolve(root, relative)).isFile();
+    target = insideRepo(root, relative);
+  } catch (error) {
+    return messageOf(error);
+  }
+  try {
+    return statSync(target).isFile() ? null : `file ${relative} does not exist`;
   } catch {
-    return false;
+    return `file ${relative} does not exist`;
   }
 }
 
@@ -89,11 +102,12 @@ function main() {
   const errors = [];
   const warnings = [];
 
-  let manifest;
+  let manifest, schema;
   try {
-    manifest = readManifest(path);
+    manifest = readManifest(fixtureMode ? resolve(givenPath) : manifestPath(root));
+    schema = JSON.parse(readFileSync(insideRepo(root, "specs/manifest.schema.json"), "utf8"));
   } catch (error) {
-    console.error(`ERROR could not read manifest: ${oneLine(error)}`);
+    console.error(`ERROR could not read manifest: ${oneLine(messageOf(error))}`);
     process.exitCode = 1;
     return;
   }
@@ -101,7 +115,7 @@ function main() {
   // Rule 1: schema.
   const ajv = new Ajv2020({ allErrors: true, strict: true });
   addFormats(ajv);
-  const validate = ajv.compile(JSON.parse(readFileSync(schemaPath, "utf8")));
+  const validate = ajv.compile(schema);
   if (!validate(manifest)) {
     for (const issue of validate.errors ?? []) {
       errors.push(`schema ${issue.instancePath || "/"}: ${issue.message}${issue.params?.additionalProperty ? ` (${issue.params.additionalProperty})` : ""}`);
@@ -139,7 +153,8 @@ function main() {
     const expectedFile = `specs/threads/${t.id}.md`;
     if (t.file !== expectedFile) errors.push(`threads (${t.id}): file must be ${expectedFile}; found ${t.file}`);
     if (t.created > manifest.last_updated) errors.push(`threads (${t.id}): created ${t.created} is later than last_updated ${manifest.last_updated}`);
-    if (!fixtureMode && !isFile(t.file)) errors.push(`threads (${t.id}): file ${t.file} does not exist`);
+    const threadProblem = fixtureMode ? null : fileProblem(t.file);
+    if (threadProblem) errors.push(`threads (${t.id}): ${threadProblem}`);
   }
 
   // Cards: unique ids, tags, pointers, dates, titles.
@@ -180,7 +195,8 @@ function main() {
     seenRegistry.add(entry.id);
     checkTags(label, entry.tags);
     if (entry.created > manifest.last_updated) errors.push(`${label}: created ${entry.created} is later than last_updated`);
-    if (!fixtureMode && entry.file && !isFile(entry.file)) errors.push(`${label}: file ${entry.file} does not exist`);
+    const entryProblem = fixtureMode || !entry.file ? null : fileProblem(entry.file);
+    if (entryProblem) errors.push(`${label}: ${entryProblem}`);
     for (const dep of entry.depends_on ?? []) {
       if (!planIds.has(dep) && !specIds.has(dep)) errors.push(`${label}: depends_on ${dep} does not resolve to a plan or spec`);
     }
@@ -229,7 +245,14 @@ function main() {
     // Rule 4: bidirectional registry.
     const registeredFiles = new Set(registry.map(({ entry }) => entry.file).filter(Boolean));
     for (const dir of REGISTERED_DIRS) {
-      for (const name of walkMarkdown(join(root, dir))) {
+      let names;
+      try {
+        names = walkMarkdown(insideRepo(root, dir), root);
+      } catch (error) {
+        errors.push(messageOf(error));
+        continue;
+      }
+      for (const name of names) {
         const relative = `${dir}/${name}`;
         if (registeredFiles.has(relative)) continue;
         errors.push(name.includes("/")
@@ -238,13 +261,25 @@ function main() {
       }
     }
 
+    // Every ADR is read once, through the link guard; a refused one stops the ADR rules.
+    let adrs = [];
+    let adrsRead = true;
+    try {
+      adrs = readAdrs(root);
+    } catch (error) {
+      errors.push(messageOf(error));
+      adrsRead = false;
+    }
+
     // Rule 4 (ADRs): numbers are never reused.
-    for (const number of duplicateAdrNumbers(join(root, "docs", "adr"))) {
-      errors.push(`docs/adr: number ${number} is used by more than one file; never reuse an ADR number`);
+    if (adrsRead) {
+      for (const number of duplicateAdrNumbers(insideRepo(root, "docs/adr"))) {
+        errors.push(`docs/adr: number ${number} is used by more than one file; never reuse an ADR number`);
+      }
     }
 
     // Rule 4 (ADRs) and rule 2 (ADR tags).
-    for (const adr of readAdrs(root)) {
+    for (const adr of adrs) {
       const label = `ADR-${adr.number}`;
       const expected = ADR_SECTIONS.join(" > ");
       if (adr.headings.join(" > ") !== expected) {
@@ -255,18 +290,26 @@ function main() {
       if (!/^(Proposed|Accepted|Superseded by \d{4})$/.test(adr.status)) errors.push(`${label}: status "${adr.statusLine}" does not start with Proposed, Accepted, or Superseded by NNNN`);
     }
 
-    // Rule 9: decision ids.
-    const log = existsSync(decisionLogPath) ? readFileSync(decisionLogPath, "utf8") : "";
+    // Rule 9: decision ids. A log that links out of the repo is refused, not read.
+    let log = "";
+    let logRead = true;
+    try {
+      const logPath = insideRepo(root, DECISION_LOG);
+      log = existsSync(logPath) ? readFileSync(logPath, "utf8") : "";
+    } catch (error) {
+      errors.push(messageOf(error));
+      logRead = false;
+    }
     const logIds = new Set([...log.matchAll(/^##+ (D-\d{3})\b/gm)].map((m) => m[1]));
-    for (const ref of decisionRefs) {
-      if (!logIds.has(ref)) errors.push(`decision ${ref} is cited in a card scope but has no heading in docs/ops/decision-log.md`);
+    for (const ref of logRead ? decisionRefs : []) {
+      if (!logIds.has(ref)) errors.push(`decision ${ref} is cited in a card scope but has no heading in ${DECISION_LOG}`);
     }
 
     // Soft: unused threads (needs ADR tags too).
     const used = new Set([
       ...cards.flatMap((c) => c.tags),
       ...registry.flatMap(({ entry }) => entry.tags),
-      ...readAdrs(root).flatMap((a) => a.tags),
+      ...adrs.flatMap((a) => a.tags),
     ]);
     for (const t of threads) if (!used.has(t.id)) warnings.push(`thread ${t.id} is used by no card, document, or ADR`);
 

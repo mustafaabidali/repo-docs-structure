@@ -93,9 +93,34 @@ export function containedPath(root, file, dir) {
   return target;
 }
 
+/**
+ * The absolute path of the repo path `file`, refusing one that resolves
+ * outside the checkout through a link, on the file itself or on a folder on
+ * its way. A path that does not exist yet is returned as it is; the caller
+ * decides what a missing file means. The error names only the repo path, so
+ * nothing about the link's target is shown.
+ * @param {string} root absolute checkout path
+ * @param {string} file repo-relative path
+ * @returns {string}
+ */
+export function insideRepo(root, file) {
+  const target = resolve(root, file);
+  let realRoot, realTarget;
+  try {
+    realRoot = realpathSync(resolve(root));
+    realTarget = realPathOf(target);
+  } catch {
+    throw new Error(`${file} is a broken link; refusing to read through it`);
+  }
+  if (realTarget !== realRoot && !isInside(realRoot, realTarget)) {
+    throw new Error(`${file} resolves outside the repository through a link; refusing to read it`);
+  }
+  return target;
+}
+
 /** @param {string} root */
 export function manifestPath(root) {
-  return join(root, "specs", "manifest.json");
+  return insideRepo(root, "specs/manifest.json");
 }
 
 /** @param {string} path */
@@ -190,13 +215,18 @@ export function parseAdr(file) {
   };
 }
 
-/** @param {string} root */
+/**
+ * Every docs/adr/NNNN-*.md, parsed. The folder and each file must stay inside
+ * the repo (insideRepo), so a link never brings an outside file's title,
+ * status or tags into the index.
+ * @param {string} root
+ */
 export function readAdrs(root) {
-  const dir = join(root, "docs", "adr");
+  const dir = insideRepo(root, "docs/adr");
   return readdirSync(dir)
     .filter((name) => /^\d{4}-.+\.md$/.test(name))
     .sort()
-    .map((name) => parseAdr(resolve(dir, name)));
+    .map((name) => parseAdr(insideRepo(root, `docs/adr/${name}`)));
 }
 
 /**
@@ -215,17 +245,44 @@ export function duplicateAdrNumbers(dir) {
 /**
  * Every .md file under dir, recursively, as paths relative to dir with / separators.
  * A folder that does not exist yet (specs/design before the first design) has none.
+ *
+ * Nothing that resolves outside `root` through a link is walked or listed: the
+ * walk throws naming that entry's path from `root`, before it reads the
+ * entry, so no outside name is shown. A folder reached twice (a link looping
+ * back inside the repo) is walked once.
  * @param {string} dir absolute path
+ * @param {string} [root] absolute path the walk must stay inside; dir by default
  */
-export function walkMarkdown(dir) {
+export function walkMarkdown(dir, root = dir) {
   /** @type {string[]} */
   const found = [];
   if (!existsSync(dir)) return found;
+  const realRoot = realpathSync(root);
+  const label = (path) => relative(root, path).split(sep).join("/") || ".";
+  const seen = new Set();
+  /** @param {string} path */
+  const realInside = (path) => {
+    let real;
+    try {
+      real = realpathSync(path);
+    } catch {
+      throw new Error(`${label(path)} is a broken link; refusing to walk it`);
+    }
+    if (real !== realRoot && !isInside(realRoot, real)) {
+      throw new Error(`${label(path)} resolves outside the repository through a link; refusing to walk it`);
+    }
+    return real;
+  };
+  /** @param {string} current */
   const visit = (current) => {
-    for (const name of readdirSync(current)) {
+    const real = realInside(current);
+    if (seen.has(real)) return;
+    seen.add(real);
+    for (const name of readdirSync(current).sort()) {
       const full = join(current, name);
+      realInside(full);
       if (statSync(full).isDirectory()) visit(full);
-      else if (name.endsWith(".md")) found.push(relative(dir, full).split("\\").join("/"));
+      else if (name.endsWith(".md")) found.push(relative(dir, full).split(sep).join("/"));
     }
   };
   visit(dir);

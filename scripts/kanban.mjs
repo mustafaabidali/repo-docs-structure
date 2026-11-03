@@ -128,7 +128,15 @@ function main() {
     return;
   }
 
-  const manifest = readManifest(manifestPath(root));
+  let manifest;
+  try {
+    manifest = readManifest(manifestPath(root));
+  } catch (error) {
+    console.error(`ERROR ${error instanceof Error ? error.message : String(error)}`);
+    console.error("kanban: nothing written");
+    process.exitCode = 1;
+    return;
+  }
   const out = renderKanban(manifest);
 
   if (process.argv.includes("--check")) {

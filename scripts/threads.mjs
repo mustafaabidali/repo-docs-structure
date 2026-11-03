@@ -32,8 +32,10 @@ import {
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const check = process.argv.includes("--check");
-const manifest = readManifest(manifestPath(root));
-const adrs = readAdrs(root);
+/** Read in main, through the link guard, before anything renders. @type {any} */
+let manifest;
+/** @type {ReturnType<typeof readAdrs>} */
+let adrs = [];
 
 /** @param {string} text @param {number} max */
 function clip(text, max) {
@@ -109,6 +111,12 @@ function renderAdrIndex() {
  * a refused output leaves every file as it was.
  */
 function main() {
+  try {
+    manifest = readManifest(manifestPath(root));
+    adrs = readAdrs(root);
+  } catch (error) {
+    return report([error instanceof Error ? error.message : String(error)]);
+  }
   const errors = manifest.metadata.threads.flatMap(threadEntryProblems);
   if (errors.length > 0) return report(errors);
 
