@@ -27,7 +27,7 @@ Give the agent one place to look, a way to see one feature at a time, and rules 
 
 ## Status
 
-This design is live in a production repo as of 2026-09-16. The earlier version (no tags, no ceilings, one 108 KB manifest) ran for five months. The redesign landed in one day. An independent reviewer then checked it in several rounds. Every finding is either fixed with a test or recorded as a deferred card. The scripts and templates are not yet copied here. Until they are, this file is the specification.
+This design is live in a production repo as of 2026-09-16. The earlier version (no tags, no ceilings, one 108 KB manifest) ran for five months. The redesign landed in one day. An independent reviewer then checked it in several rounds. Every finding is either fixed with a test or recorded as a deferred card. The scripts, their tests, the schema and the templates are now in this repo, and this repo runs its own checks in CI. This file is still the specification: where the code and this file differ, one of them has a bug.
 
 ## What you get
 
@@ -315,7 +315,7 @@ The block in `AGENTS.md`:
 
 ## Where new markdown may go
 
-The default list. Add your own app folders to `ALLOWED_MARKDOWN` in `check-docs-location.mjs`.
+The default list. Add your own app folders to `ALLOWED_MARKDOWN` in `scripts/lib/settings.mjs`.
 
 - `docs/**`
 - `specs/design/**`, `specs/plans/**`, `specs/reviews/**`, `specs/threads/**`
@@ -332,6 +332,96 @@ Anywhere else, the location check fails.
 - **If it cannot be checked, it is one line in AGENTS.md or it is gone.** Most rules became scripts. The few that cannot (never change `created`, append-only log) stay as prose.
 - **Nothing is deleted, only deferred.** A card with a dated reason is a log entry. An undated pile is a backlog.
 
-## Next step
+## Install
 
-Copy the five scripts, their tests, the schema, and the templates from the source repo into this one, unchanged, then add an install script that lays them into a new or existing repo.
+Into a new or existing repo, from its root, with Node.js 22 or newer, `git` and `bash`. The steps copy files and edit the repo's own `package.json`; nothing runs from the copy. Only two things a repo already has are replaced: the checks and their tests (step 2, apart from `scripts/lib/settings.mjs`), and the four scripts the checks need in `package.json` (step 4). Every other file it has, the schema with its archive pattern included, is kept.
+
+1. Take a copy of this repo:
+
+   ```sh
+   template=$(mktemp -d)
+   git clone --depth 1 https://github.com/mustafaabidali/repo-docs-structure.git "$template"
+   ```
+
+2. Copy the five checks, the shared code and their tests. The settings file, `scripts/lib/settings.mjs`, is copied only when the repo has none, so an upgrade (this step again) keeps the repo's own values:
+
+   ```sh
+   mkdir -p scripts/lib
+   cp "$template"/scripts/*.mjs scripts/
+   for f in "$template"/scripts/lib/*.mjs; do
+     name=$(basename "$f")
+     if [ "$name" = settings.mjs ] && [ -e scripts/lib/settings.mjs ]; then continue; fi
+     cp "$f" scripts/lib/
+   done
+   ```
+
+3. Copy the schema and the starting files, among them the AGENTS.md block that step 9 needs. Each is copied only when nothing is at its path, not even a link. The starting manifest, plan and thread come only into a repo with no manifest, so a repo that has one never gains a plan it has not registered:
+
+   ```sh
+   mkdir -p specs/threads specs/plans specs/design specs/reviews docs/adr docs/ops
+   starting=""
+   if [ ! -e specs/manifest.json ] && [ ! -L specs/manifest.json ]; then
+     starting="specs/manifest.json specs/plans/2026-11-03-docs-structure.md specs/threads/docs-structure.md"
+   fi
+   for f in $starting specs/manifest.schema.json specs/design/.gitkeep specs/reviews/.gitkeep docs/README.md \
+     docs/agents-md-block.md docs/adr/README.md docs/adr/TEMPLATE.md docs/ops/decision-log.md; do
+     [ -e "$f" ] || [ -L "$f" ] || cp "$template/$f" "$f"
+   done
+   ```
+
+4. The Node setup and CI. A repo with no `package.json`, `.nvmrc`, `.npmrc` or workflow gets this repo's; a repo that has a `package.json` keeps it and gains the four scripts. Both get `.nvmrc`, which the workflow reads for the Node version:
+
+   ```sh
+   mkdir -p .github/workflows
+   for f in package.json .nvmrc .npmrc .github/workflows/ci.yml .github/dependabot.yml; do
+     [ -e "$f" ] || [ -L "$f" ] || cp "$template/$f" "$f"
+   done
+   npm pkg set "scripts.kanban=node scripts/kanban.mjs" "scripts.threads=node scripts/threads.mjs" \
+     "scripts.test:manifest=node --test 'scripts/**/*.test.mjs'" \
+     "scripts.check=node scripts/check-manifest.mjs && node scripts/check-docs-location.mjs && node scripts/check-rule-files-alone.mjs && npm run test:manifest"
+   ```
+
+   A repo that already had a `.nvmrc` keeps it: it must name Node 22 or newer. A repo that already had `.github/workflows/ci.yml` keeps it: add this repo's four check steps to it, with the full history (`fetch-depth: 0`) and the push event's base (`GITHUB_EVENT_BEFORE`), as this repo's workflow sets them. A new repo sets its own `name` in `package.json`.
+
+5. Install the two validators, pinned:
+
+   ```sh
+   npm install --save-dev --save-exact ajv@8.20.0 ajv-formats@3.0.1
+   ```
+
+6. Register what the repo already holds, before the first check, which fails on any file it cannot account for and names it. Each file under `specs/plans/`, `specs/design/` and `specs/reviews/` gets one entry in `metadata.plans`, `metadata.specs` or `metadata.reviews`, tagged `docs-structure` until the repo has threads of its own; a file in a nested folder moves to its folder's root. Each numbered file in `docs/adr/` needs the eight headings, and tags that are thread ids.
+
+7. Set `name` and `last_updated` in `specs/manifest.json`, then draw the board and the threads and run every check:
+
+   ```sh
+   npm run kanban && npm run threads
+   npm run check
+   ```
+
+8. Open a pull request with all of it. Once it is open, remove the copy:
+
+   ```sh
+   rm -rf "$template"
+   ```
+
+9. Paste the block in `docs/agents-md-block.md` into the repo's `AGENTS.md`, in a pull request of its own: the rule-files check fails a pull request that changes `AGENTS.md` with anything else.
+
+10. Follow `specs/plans/2026-11-03-docs-structure.md`: replace the starting thread with the repo's own, add the first cards, and move existing decisions into `docs/adr/`.
+
+To upgrade, run steps 1 to 3 again, then step 8's removal. The checks are replaced and everything else is kept, the settings and the schema included. A newer template may change the schema: compare it with the repo's before removing the copy, with `diff specs/manifest.schema.json "$template"/specs/manifest.schema.json`, and carry over what changed, keeping the repo's own archive pattern.
+
+The tests need at least one thread and one plan in the manifest, which the starting files provide. This repo's own tests, in `template-tests/`, run the shell blocks above whole in made-up repos, with only the clone and the package install replaced by local stand-ins, so these steps are tested as written; run them with `node --test 'template-tests/*.test.mjs'`. The steps never copy `template-tests/`, so an adopting repo never runs them against its own README or workflow.
+
+### What a repo may change
+
+All but the last live in one file, `scripts/lib/settings.mjs`. The archive pattern lives in the schema, where the validator reads it.
+
+| Value | Where | Default |
+|---|---|---|
+| Where new Markdown may go | `ALLOWED_MARKDOWN` | the list in "Where new markdown may go", plus `specs/KANBAN.md` |
+| The rule files, and what may travel with them | `RULE_FILES` and `ALLOWED_EXTRAS` | `AGENTS.md`, `CLAUDE.md`; the decision log, ADRs, the manifest and its generated views |
+| The ceilings | `CEILINGS` | 30 active, 10 at priority 1, 3 in progress, 10 owner |
+| The default branch. A local run, and a push that creates another branch, are judged from their merge base with it; the push that creates it is judged from the empty tree. A pull request is judged against its own base branch and an ordinary push from the commit before it, so neither reads it | `DEFAULT_BRANCH` | `main` |
+| The archive repo an `archived` URL must point into | `$defs.archiveUrl.pattern`, in `specs/manifest.schema.json` | any GitHub file URL under `specs/plans/`, `specs/design/` or `specs/reviews/`; narrow it to the repo's own archive |
+
+Every test reads these values from where they live, so changing one never needs a test change: `scripts/settings.test.mjs` changes every value in a copy of the repo and runs the whole suite there.

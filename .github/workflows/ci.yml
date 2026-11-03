@@ -1,0 +1,36 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: npm ci
+      - run: node scripts/check-manifest.mjs
+      - if: ${{ !cancelled() }}
+        run: node scripts/check-docs-location.mjs
+      - if: ${{ !cancelled() }}
+        run: node scripts/check-rule-files-alone.mjs
+      - if: ${{ !cancelled() }}
+        run: npm run test:manifest
+      - if: ${{ !cancelled() && hashFiles('template-tests/*.test.mjs') != '' }}
+        name: The template's own tests (the Install steps run whole, and this workflow), which only the template repo holds
+        run: node --test 'template-tests/*.test.mjs'

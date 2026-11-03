@@ -1,0 +1,17 @@
+{
+  "name": "repo-docs-structure",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "kanban": "node scripts/kanban.mjs",
+    "threads": "node scripts/threads.mjs",
+    "test:manifest": "node --test 'scripts/**/*.test.mjs'",
+    "check": "node scripts/check-manifest.mjs && node scripts/check-docs-location.mjs && node scripts/check-rule-files-alone.mjs && npm run test:manifest"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  }
+}
